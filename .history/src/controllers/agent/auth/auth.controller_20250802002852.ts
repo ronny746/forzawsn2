@@ -45,7 +45,7 @@ const appUserLogin = async (req: RequestType, res: Response, next: NextFunction)
 
     const jwtToken = await jwtModule
       .signAccessToken({
-        requestIP: req.ip??'',
+        requestIP: req.ip,
         appUserId: objectIdToString(getFinUser.EMPCode),
         DesigId: objectIdToString(getFinUser.DesigId)
       })
@@ -55,7 +55,7 @@ const appUserLogin = async (req: RequestType, res: Response, next: NextFunction)
 
     const jwtRefreshToken = await jwtModule
       .signRefreshToken({
-        requestIP: req.ip??'',
+        requestIP: req.ip,
         appUserId: objectIdToString(getFinUser.EMPCode),
         DesigId: objectIdToString(getFinUser.DesigId)
       })

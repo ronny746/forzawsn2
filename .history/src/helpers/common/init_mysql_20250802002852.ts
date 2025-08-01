@@ -53,28 +53,25 @@
 
 import { Sequelize } from 'sequelize';
 
-const sequelize = new Sequelize('WSNPROD', 'wsnuser', 'System@12345', {
-  host: '14.99.179.131',
+const sequelize = new Sequelize('WSNPROD', 'wsnuser', 'System@12345', { 
   dialect: 'mssql',
-  port: 1433,
+  host: 'localhost',
+  port: 1434,
   dialectOptions: {
     options: {
-      encrypt: false, // set true only for Azure
-      trustServerCertificate: true,
-    }
+      encrypt: true, // Use true if connecting to Azure; otherwise, set to false
+      packetSize: 16384, // Adjust packet size as needed
+      trustServerCertificate: true, // Set to true for self-signed certificates
+      requestTimeout: 120000,
+    },
+        // 30 seconds timeout for queries
   },
   pool: {
-    max: 10,
-    min: 0,
-    acquire: 30000,
+    max: 500,
+    min: 2,
+    acquire: 90000,
     idle: 10000,
   },
-  logging: false,
 });
-
-// ✅ Optional: test connection
-sequelize.authenticate()
-  .then(() => console.log('✅ MSSQL DB connected successfully'))
-  .catch(err => console.error('❌ Connection error:', err.message));
 
 export default sequelize;

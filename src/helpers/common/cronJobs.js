@@ -7,7 +7,7 @@ import { sendAttendenceMail } from '../../controllers/admin/cron.controller'
 // [*/10 * * * * *] time second 1
 // https://www.npmjs.com/package//node-cron  -> CRON documentation
 cron.schedule('50 23 * * *', async function () {
-    console.log("============MARK ATTENDENCE ON CRON JOB==========");
+    console.log('============MARK ATTENDENCE ON CRON JOB==========');
     await sendAttendenceMail()
 });
 // cron.schedule('*/20 * * * * *', async function () {

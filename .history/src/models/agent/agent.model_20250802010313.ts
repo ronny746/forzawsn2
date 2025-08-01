@@ -77,11 +77,11 @@ agentSchema.methods.getSignedJWTToken = async function (): Promise<string> {
     },
     mySecret,
     {
-      
+      expiresIn: process.env.JWT_EXPIRE
     }
   );
 };
 
 const appUserModel = mongoose.model('app_agents', agentSchema);
 
-export { appUserModel };
+export { appUserModel 

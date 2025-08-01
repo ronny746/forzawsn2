@@ -1,8 +1,7 @@
-import JWT, { SignOptions, Secret } from 'jsonwebtoken';
+import JWT from 'jsonwebtoken';
 import moment from 'moment';
 import httpErrors from 'http-errors';
-import { Response, NextFunction } from 'express';
-
+import { NextFunction, Response } from 'express';
 import { RequestType } from '../../helpers/shared/shared.type';
 // import { redisClient } from '../../helpers/common/init_redis';
 import { logBackendError, getTokenExpTime } from '../../helpers/common/backend.functions';
@@ -83,37 +82,34 @@ const __sendJWTError = async (error: any, req: RequestType, res: Response): Prom
   }
 };
 
-const signAccessToken = (payloadData: PayloadDataType): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    (async (): Promise<void> => {
-      try {
-        const jwtPayload: object = { payloadData };
+const signAccessToken = async (payloadData: PayloadDataType): Promise<string> => {
+  try {
+    const JWT_ACCESS_TOKEN_SECRET = process.env.JWT_ACCESS_TOKEN_SECRET;
+    if (!JWT_ACCESS_TOKEN_SECRET)
+      throw httpErrors.UnprocessableEntity('Missing JWT_ACCESS_TOKEN_SECRET');
 
-        const JWT_ACCESS_TOKEN_SECRET = process.env.JWT_ACCESS_TOKEN_SECRET;
-        if (!JWT_ACCESS_TOKEN_SECRET)
-          throw httpErrors.UnprocessableEntity(`Unable to process Constant [JWT_ACCESS_TOKEN_SECRET]`);
+    const JWT_ISSUER = process.env.JWT_ISSUER;
+    if (!JWT_ISSUER)
+      throw httpErrors.UnprocessableEntity('Missing JWT_ISSUER');
 
-        const JWT_ISSUER = process.env.JWT_ISSUER;
-        if (!JWT_ISSUER)
-          throw httpErrors.UnprocessableEntity(`Unable to process Constant [JWT_ISSUER]`);
+    const jwtPayload = { payloadData };
+    const jwtConfigOptions: jwt.SignOptions = {
+      expiresIn: `${await getTokenExpTime()}m`,
+      issuer: JWT_ISSUER,
+    };
 
-        const jwtSecretKey: Secret = JWT_ACCESS_TOKEN_SECRET;
-        const jwtConfigOptions: SignOptions = {
-          expiresIn: `${await getTokenExpTime()}m`,
-          issuer: JWT_ISSUER,
-        };
-
-        JWT.sign(jwtPayload, jwtSecretKey, jwtConfigOptions, (error, jwtToken) => {
-          return error ? reject(error) : resolve(jwtToken as string);
-        });
-      } catch (error: any) {
-        logBackendError(__filename, error?.message, null, null, null, error?.stack);
-        if (error?.isJoi === true) error.status = 422;
-        return reject(error);
-      }
-    })();
-  });
+    return new Promise<string>((resolve, reject) => {
+      jwt.sign(jwtPayload, JWT_ACCESS_TOKEN_SECRET, jwtConfigOptions, (err, token) => {
+        return err ? reject(err) : resolve(token as string);
+      });
+    });
+  } catch (error: any) {
+    logBackendError(__filename, error?.message, null, null, null, error?.stack);
+    if (error?.isJoi === true) error.status = 422;
+    throw error;
+  }
 };
+
 const signRefreshToken = (payloadData: PayloadDataType): Promise<string> => {
   return new Promise((resolve, reject) => {
     (async (): Promise<void> => {

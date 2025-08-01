@@ -22,7 +22,7 @@ async function logBackendError(
   routePath: string | null = null,
   clientAddress: string | null = null,
   miscellaneous: string | null = null,
-  level = 'error'
+  level: string = 'error'
 ): Promise<boolean> {
   try {
     if (mongoose.connection.readyState === 1) {

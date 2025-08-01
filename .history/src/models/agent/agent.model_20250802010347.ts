@@ -76,9 +76,9 @@ agentSchema.methods.getSignedJWTToken = async function (): Promise<string> {
       id: this._id
     },
     mySecret,
-    {
-      
-    }
+    // {
+    //   expiresIn: process.env.JWT_EXPIRE
+    // }
   );
 };
 

@@ -1,8 +1,7 @@
-import JWT, { SignOptions, Secret } from 'jsonwebtoken';
+import JWT from 'jsonwebtoken';
 import moment from 'moment';
 import httpErrors from 'http-errors';
-import { Response, NextFunction } from 'express';
-
+import { NextFunction, Response } from 'express';
 import { RequestType } from '../../helpers/shared/shared.type';
 // import { redisClient } from '../../helpers/common/init_redis';
 import { logBackendError, getTokenExpTime } from '../../helpers/common/backend.functions';
@@ -87,24 +86,23 @@ const signAccessToken = (payloadData: PayloadDataType): Promise<string> => {
   return new Promise((resolve, reject) => {
     (async (): Promise<void> => {
       try {
-        const jwtPayload: object = { payloadData };
-
+        const jwtPayload = { payloadData };
         const JWT_ACCESS_TOKEN_SECRET = process.env.JWT_ACCESS_TOKEN_SECRET;
+
         if (!JWT_ACCESS_TOKEN_SECRET)
           throw httpErrors.UnprocessableEntity(`Unable to process Constant [JWT_ACCESS_TOKEN_SECRET]`);
-
         const JWT_ISSUER = process.env.JWT_ISSUER;
-        if (!JWT_ISSUER)
-          throw httpErrors.UnprocessableEntity(`Unable to process Constant [JWT_ISSUER]`);
 
-        const jwtSecretKey: Secret = JWT_ACCESS_TOKEN_SECRET;
-        const jwtConfigOptions: SignOptions = {
+        if (!JWT_ISSUER) throw httpErrors.UnprocessableEntity(`Unable to process Constant [JWT_ISSUER]`);
+
+        const jwtSecretKey = JWT_ACCESS_TOKEN_SECRET;
+        const jwtConfigOptions = {
           expiresIn: `${await getTokenExpTime()}m`,
-          issuer: JWT_ISSUER,
+          issuer: JWT_ISSUER
         };
 
-        JWT.sign(jwtPayload, jwtSecretKey, jwtConfigOptions, (error, jwtToken) => {
-          return error ? reject(error) : resolve(jwtToken as string);
+        JWT.sign(jwtPayload, jwtSecretKey, jwtConfigOptions, (error, jwtToken: any) => {
+          return error ? reject(error) : resolve(jwtToken);
         });
       } catch (error: any) {
         logBackendError(__filename, error?.message, null, null, null, error?.stack);
@@ -114,6 +112,7 @@ const signAccessToken = (payloadData: PayloadDataType): Promise<string> => {
     })();
   });
 };
+
 const signRefreshToken = (payloadData: PayloadDataType): Promise<string> => {
   return new Promise((resolve, reject) => {
     (async (): Promise<void> => {

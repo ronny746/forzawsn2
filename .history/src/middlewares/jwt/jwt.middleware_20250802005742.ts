@@ -1,8 +1,7 @@
-import JWT, { SignOptions, Secret } from 'jsonwebtoken';
+import JWT from 'jsonwebtoken';
 import moment from 'moment';
 import httpErrors from 'http-errors';
-import { Response, NextFunction } from 'express';
-
+import { NextFunction, Response } from 'express';
 import { RequestType } from '../../helpers/shared/shared.type';
 // import { redisClient } from '../../helpers/common/init_redis';
 import { logBackendError, getTokenExpTime } from '../../helpers/common/backend.functions';
