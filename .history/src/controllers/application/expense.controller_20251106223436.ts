@@ -345,7 +345,7 @@ const expMstModeUpdateByDesc = async (req: RequestType, res: Response): Promise<
 
     // ✅ Validation
     if (!OldExpModeDesc || OldExpModeDesc.trim() === "") {
-       res.status(400).json({
+      return res.status(400).json({
         ResponseMessage: "OldExpModeDesc is required",
         Status: false,
         ResponseCode: "BAD_REQUEST",

@@ -9,11 +9,6 @@ appClaimRouterV1.post('/create-expense', jwtModule.verifyApplicationAccessToken,
 appClaimRouterV1.get('/exp-mst-mode', jwtModule.verifyApplicationAccessToken, appExpenseController.expMstMode);
 appClaimRouterV1.get('/mst-con-mode', jwtModule.verifyApplicationAccessToken, appExpenseController.mstConMode);
 appClaimRouterV1.post('/mst-con-mode/update' ,appExpenseController.updateConvModeRate);
-appClaimRouterV1.post('/exp-mode/add', appExpenseController.expMstModeAdd);
-appClaimRouterV1.post('/exp-mode/update-by-desc', appExpenseController.expMstModeUpdateByDesc);
-
-
-
 appClaimRouterV1.get('/get-expense', jwtModule.verifyApplicationAccessToken, appExpenseController.getAllExpense);
 appClaimRouterV1.get('/get-expense-list', jwtModule.verifyApplicationAccessToken, appExpenseController.getAllExpenseList);
 appClaimRouterV1.post('/upload-expense-doc', jwtModule.verifyAccessToken, upload0.single('file'), appExpenseController.uploadExpenseDoc);

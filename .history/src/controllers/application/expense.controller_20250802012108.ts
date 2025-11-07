@@ -274,222 +274,6 @@ const mstConMode = async (req: RequestType, res: Response): Promise<void> => {
     }
 };
 
-const expMstModeAdd = async (req: RequestType, res: Response): Promise<void> => {
-    try {
-        const decoded = req.payload;
-        console.log("User:", decoded);
-
-        const { ExpModeDesc } = req.body;
-
-        // ✅ Validation
-        if (!ExpModeDesc || ExpModeDesc.trim() === "") {
-            res.status(400).json({
-                ResponseMessage: "ExpModeDesc is required",
-                Status: false,
-                DataCount: 0,
-                Data: [],
-                ResponseCode: "BAD_REQUEST",
-                confirmationbox: false
-            });
-            return;
-        }
-
-        // ✅ Insert query
-        const insertQuery = `
-  INSERT INTO dbo.mstexpmode (ExpModeDesc, IsActive)
-  VALUES (:ExpModeDesc, 1)
-`;
-
-        await sequelize.query(insertQuery, {
-            replacements: { ExpModeDesc },
-            type: QueryTypes.INSERT,
-        });
-
-        // ✅ Fetch updated list
-        const selectQuery = `SELECT * FROM dbo.mstexpmode WHERE IsActive = 1`;
-
-        const rows: any = await sequelize.query(selectQuery, {
-            type: QueryTypes.SELECT,
-        });
-
-        // ✅ Success response
-        res.status(200).json({
-            ResponseMessage: "New Expense Mode Added Successfully",
-            Status: true,
-            DataCount: rows.length,
-            Data: {
-                MstExpMode: rows.map((row: any) => ({
-                    ddlId: row.ExpModeId,
-                    ddlDesc: row.ExpModeDesc
-                }))
-            },
-            ResponseCode: "OK",
-            confirmationbox: true
-        });
-
-    } catch (error: any) {
-        console.log(error);
-        res.status(500).json({
-            ResponseMessage: "Internal Server Error",
-            Status: false,
-            Data: [],
-            ResponseCode: "SERVER_ERROR",
-            confirmationbox: false
-        });
-    }
-};
-
-const expMstModeUpdateByDesc = async (req: RequestType, res: Response): Promise<void> => {
-  try {
-    const { OldExpModeDesc, NewExpModeDesc } = req.body;
-
-    // ✅ Validation
-    if (!OldExpModeDesc || OldExpModeDesc.trim() === "") {
-       res.status(400).json({
-        ResponseMessage: "OldExpModeDesc is required",
-        Status: false,
-        ResponseCode: "BAD_REQUEST",
-        confirmationbox: false
-      });
-    }
-
-    if (!NewExpModeDesc || NewExpModeDesc.trim() === "") {
-       res.status(400).json({
-        ResponseMessage: "NewExpModeDesc is required",
-        Status: false,
-        ResponseCode: "BAD_REQUEST",
-        confirmationbox: false
-      });
-    }
-
-    // ✅ Check if record exists
-    const checkQuery = `
-      SELECT * FROM dbo.mstexpmode
-      WHERE ExpModeDesc = :OldExpModeDesc AND IsActive = 1
-    `;
-
-    const record: any = await sequelize.query(checkQuery, {
-      replacements: { OldExpModeDesc },
-      type: QueryTypes.SELECT
-    });
-
-    if (record.length === 0) {
-       res.status(404).json({
-        ResponseMessage: "Record not found for given ExpModeDesc",
-        Status: false,
-        ResponseCode: "NOT_FOUND",
-        confirmationbox: false
-      });
-    }
-
-    // ✅ Update BOTH: ExpModeId → 9 and Description
-    const updateQuery = `
-      UPDATE dbo.mstexpmode
-      SET 
-        ExpModeId = 9, 
-        ExpModeDesc = :NewExpModeDesc
-      WHERE ExpModeDesc = :OldExpModeDesc
-        OR ExpModeId IS NULL
-    `;
-
-    await sequelize.query(updateQuery, {
-      replacements: { OldExpModeDesc, NewExpModeDesc },
-      type: QueryTypes.UPDATE
-    });
-
-    // ✅ Fetch updated list
-    const rows: any = await sequelize.query(
-      `SELECT * FROM dbo.mstexpmode WHERE IsActive = 1`,
-      { type: QueryTypes.SELECT }
-    );
-
-    // ✅ Success response
-     res.status(200).json({
-      ResponseMessage: "Expense Mode Updated Successfully",
-      Status: true,
-      DataCount: rows.length,
-      Data: {
-        MstExpMode: rows.map((row: any) => ({
-          ddlId: row.ExpModeId,
-          ddlDesc: row.ExpModeDesc
-        }))
-      },
-      ResponseCode: "OK",
-      confirmationbox: true
-    });
-
-  } catch (error: any) {
-    console.log(error);
-     res.status(500).json({
-      ResponseMessage: "Internal Server Error",
-      Status: false,
-      ResponseCode: "SERVER_ERROR",
-      confirmationbox: false
-    });
-  }
-};
-
-
-
-const updateConvModeRate = async (req: RequestType, res: Response): Promise<void> => {
-    try {
-        const { ConvModeId, Rate } = req.body;
-
-        if (!ConvModeId || Rate === undefined) {
-            res.status(400).json({
-                ResponseMessage: "ConvModeId and Rate are required",
-                Status: false,
-                ResponseCode: "BAD_REQUEST"
-            });
-            return;
-        }
-
-        const updateQuery = `
-            UPDATE dbo.mstconvmode
-            SET Rate = :Rate
-            WHERE ConvModeId = :ConvModeId
-        `;
-
-        const result: any = await sequelize.query(updateQuery, {
-            replacements: { ConvModeId, Rate },
-            type: QueryTypes.UPDATE
-        });
-
-        // If nothing was updated
-        if (result[1] === 0) {
-            res.status(404).json({
-                ResponseMessage: "No record found for the given ConvModeId",
-                Status: false,
-                ResponseCode: "NOT_FOUND"
-            });
-            return;
-        }
-
-        // Fetch updated data
-        const selectQuery = `SELECT * FROM dbo.mstconvmode WHERE IsActive = 1`;
-        const rows: any = await sequelize.query(selectQuery, {
-            type: QueryTypes.SELECT
-        });
-
-        res.status(200).json({
-            ResponseMessage: "Rate updated successfully",
-            Status: true,
-            DataCount: rows.length,
-            Data: rows,
-            ResponseCode: "OK",
-            confirmationbox: false
-        });
-    } catch (error: any) {
-        console.log(error);
-        res.status(500).json({
-            ResponseMessage: "Internal Server Error",
-            Status: false,
-            ResponseCode: "ERROR",
-            error: error.message
-        });
-    }
-};
-
 const getAllExpense = async (req: RequestType, res: Response): Promise<void> => {
     try {
 
@@ -601,20 +385,20 @@ const getAllExpense = async (req: RequestType, res: Response): Promise<void> => 
             return;
         }
         else {
-            const responseData = {
-                "ResponseMessage": "Success",
-                "Status": true,
-                "DataCount": result.length,
-                "Data": {
-                    "ClaimDetails": result
-                },
-                claimData: result1,
-                "ResponseCode": "OK",
-                "confirmationbox": false
-            }
-
-            res.status(200).send(responseData);
+        const responseData = {
+            "ResponseMessage": "Success",
+            "Status": true,
+            "DataCount": result.length,
+            "Data": {
+                "ClaimDetails": result
+            },
+            claimData: result1,
+            "ResponseCode": "OK",
+            "confirmationbox": false
         }
+
+        res.status(200).send(responseData);
+    }
     } catch (error: any) {
         console.log(error.message, "error in get all expense");
         res.status(500).send({ error: error });
@@ -753,10 +537,5 @@ export {
     mstConMode,
     getAllExpense,
     getAllExpenseList,
-    uploadExpenseDoc,
-    updateConvModeRate,
-    expMstModeAdd,
-    expMstModeUpdateByDesc
-
-
+    uploadExpenseDoc
 };

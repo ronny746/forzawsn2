@@ -315,101 +315,194 @@ const getAllExpense = async (req: RequestType, res: Response, next: NextFunction
     }
 };
 
+// const getExportExpense = async (req: RequestType, res: Response, next: NextFunction): Promise<void> => {
+//     try {
+
+//         const DesigId = req?.payload?.DesigId;
+//         let searchKey = req.query.searchKey;
+//         const startDate: any = req.query.startDate;
+//         const endDate: any = req.query.endDate;
+//         console.log(startDate, endDate, "date==============>");
+
+//         if (!searchKey) searchKey = "";
+//         searchKey = "%" + searchKey + "%";
+
+//         let filter_query = ``;
+
+//         // Add date filtering if provided
+//         if (startDate && endDate) {
+//             filter_query = `AND CAST(ve.createdAt AS DATE) BETWEEN :startDate AND :endDate`
+//         }
+
+//         let result: any = { count: 0, rows: [] };
+
+//         let query: string;
+//         if (DesigId === '4') {
+//             query = `
+//             SELECT
+//                 emp.EMPCode as EmployeeId,
+//                 CONCAT(emp.FirstName, ' ', emp.LastName) as Name,
+//                 em.ExpModeDesc as ExpenseType,
+//                 ve.amount as Cost,
+//                 FORMAT(ve.createdAt AT TIME ZONE 'UTC' AT TIME ZONE 'India Standard Time', 'dd-MM-yyyy') AS ExpenseDate, 
+//                 vs.VisitFrom, 
+//                 FORMAT(vs.VisitDate AT TIME ZONE 'UTC' AT TIME ZONE 'India Standard Time', 'dd-MM-yyyy') AS VisitDate, 
+//                 vs.VisitTo,
+//                 vs.VisitPurpose as Purpose  
+//             FROM 
+//                 dbo.visitexpense AS ve 
+//                 INNER JOIN dbo.visitsummary vs ON vs.VisitSummaryId = ve.VisitId 
+//                 INNER JOIN dbo.employeedetails emp ON emp.EMPCode = ve.EmpCode 
+//                 LEFT JOIN dbo.mstexpmode em ON em.ExpModeId = ve.expensemodeid
+//                 INNER JOIN dbo.mststatus sts ON sts.StatusId = ve.ExpenseStatusId 
+//             WHERE 
+//                 (emp.FirstName LIKE :searchKey OR emp.LastName LIKE :searchKey OR emp.EMPCode LIKE :searchKey) 
+//                 AND ve.EmpCode = :EMPCode
+//                 AND ve.isActive = 1
+//                 ${filter_query}
+//                 order by ve.createdAt desc
+//         `;
+//         }
+//         else {
+//             query = `
+//             SELECT 
+//                 emp.EMPCode as EmployeeId,
+//                 CONCAT(emp.FirstName, ' ', emp.LastName) as Name,
+//                 em.ExpModeDesc as ExpenseType,
+//                 ve.amount as Cost,
+//                 FORMAT(ve.createdAt AT TIME ZONE 'UTC' AT TIME ZONE 'India Standard Time', 'dd-MM-yyyy') AS ExpenseDate, 
+//                 vs.VisitFrom,
+//                 FORMAT(vs.VisitDate AT TIME ZONE 'UTC' AT TIME ZONE 'India Standard Time', 'dd-MM-yyyy') AS VisitDate,
+//                 vs.VisitTo,
+//                 vs.VisitPurpose as Purpose
+//             FROM 
+//                 dbo.visitexpense AS ve 
+//                 INNER JOIN dbo.visitsummary vs ON vs.VisitSummaryId = ve.VisitId 
+//                 INNER JOIN dbo.employeedetails emp ON emp.EMPCode = ve.EmpCode 
+//                 LEFT JOIN dbo.mstexpmode em ON em.ExpModeId = ve.expensemodeid 
+//                 INNER JOIN dbo.mststatus sts ON sts.StatusId = ve.ExpenseStatusId 
+//             WHERE 
+//                 (emp.FirstName LIKE :searchKey OR emp.LastName LIKE :searchKey OR emp.EMPCode LIKE :searchKey)
+//                 AND (emp.MgrEmployeeID = :EMPCode OR ve.EmpCode = :EMPCode) 
+//                 AND ve.isActive = 1
+//                 ${filter_query}
+//                 order by ve.createdAt desc
+//         `;
+//         }
+
+//         // console.log('query', query);
+
+//         // Execute the query
+//         result.rows = await sequelize.query(query, {
+//             replacements: {
+//                 searchKey: searchKey,
+//                 EMPCode: req?.payload?.appUserId,
+//                 startDate: startDate,
+//                 endDate: endDate
+//             },
+//             type: QueryTypes.SELECT,
+//         });
+
+//         res.status(200).send({ data: result });
+//     } catch (error: any) {
+//         console.log(error);
+//         if (error?.isJoi === true) error.status = 422;
+//         next(error);
+//     }
+// };
 const getExportExpense = async (req: RequestType, res: Response, next: NextFunction): Promise<void> => {
-    try {
+  try {
+    const DesigId = req?.payload?.DesigId;
+    let searchKey = req.query.searchKey;
+    const startDate: any = req.query.startDate;
+    const endDate: any = req.query.endDate;
 
-        const DesigId = req?.payload?.DesigId;
-        let searchKey = req.query.searchKey;
-        const startDate: any = req.query.startDate;
-        const endDate: any = req.query.endDate;
-        console.log(startDate, endDate, "date==============>");
+    if (!searchKey) searchKey = "";
+    searchKey = "%" + searchKey + "%";
 
-        if (!searchKey) searchKey = "";
-        searchKey = "%" + searchKey + "%";
+    let filter_query = ``;
 
-        let filter_query = ``;
-
-        // Add date filtering if provided
-        if (startDate && endDate) {
-            filter_query = `AND CAST(ve.createdAt AS DATE) BETWEEN :startDate AND :endDate`
-        }
-
-        let result: any = { count: 0, rows: [] };
-
-        let query: string;
-        if (DesigId === '4') {
-            query = `
-            SELECT
-                emp.EMPCode as EmployeeId,
-                CONCAT(emp.FirstName, ' ', emp.LastName) as Name,
-                em.ExpModeDesc as ExpenseType,
-                ve.amount as Cost,
-                FORMAT(ve.createdAt AT TIME ZONE 'UTC' AT TIME ZONE 'India Standard Time', 'dd-MM-yyyy') AS ExpenseDate, 
-                vs.VisitFrom, 
-                FORMAT(vs.VisitDate AT TIME ZONE 'UTC' AT TIME ZONE 'India Standard Time', 'dd-MM-yyyy') AS VisitDate, 
-                vs.VisitTo,
-                vs.VisitPurpose as Purpose  
-            FROM 
-                dbo.visitexpense AS ve 
-                INNER JOIN dbo.visitsummary vs ON vs.VisitSummaryId = ve.VisitId 
-                INNER JOIN dbo.employeedetails emp ON emp.EMPCode = ve.EmpCode 
-                LEFT JOIN dbo.mstexpmode em ON em.ExpModeId = ve.expensemodeid
-                INNER JOIN dbo.mststatus sts ON sts.StatusId = ve.ExpenseStatusId 
-            WHERE 
-                (emp.FirstName LIKE :searchKey OR emp.LastName LIKE :searchKey OR emp.EMPCode LIKE :searchKey) 
-                AND ve.EmpCode = :EMPCode
-                AND ve.isActive = 1
-                ${filter_query}
-                order by ve.createdAt desc
-        `;
-        }
-        else {
-            query = `
-            SELECT 
-                emp.EMPCode as EmployeeId,
-                CONCAT(emp.FirstName, ' ', emp.LastName) as Name,
-                em.ExpModeDesc as ExpenseType,
-                ve.amount as Cost,
-                FORMAT(ve.createdAt AT TIME ZONE 'UTC' AT TIME ZONE 'India Standard Time', 'dd-MM-yyyy') AS ExpenseDate, 
-                vs.VisitFrom,
-                FORMAT(vs.VisitDate AT TIME ZONE 'UTC' AT TIME ZONE 'India Standard Time', 'dd-MM-yyyy') AS VisitDate,
-                vs.VisitTo,
-                vs.VisitPurpose as Purpose
-            FROM 
-                dbo.visitexpense AS ve 
-                INNER JOIN dbo.visitsummary vs ON vs.VisitSummaryId = ve.VisitId 
-                INNER JOIN dbo.employeedetails emp ON emp.EMPCode = ve.EmpCode 
-                LEFT JOIN dbo.mstexpmode em ON em.ExpModeId = ve.expensemodeid 
-                INNER JOIN dbo.mststatus sts ON sts.StatusId = ve.ExpenseStatusId 
-            WHERE 
-                (emp.FirstName LIKE :searchKey OR emp.LastName LIKE :searchKey OR emp.EMPCode LIKE :searchKey)
-                AND (emp.MgrEmployeeID = :EMPCode OR ve.EmpCode = :EMPCode) 
-                AND ve.isActive = 1
-                ${filter_query}
-                order by ve.createdAt desc
-        `;
-        }
-
-        // console.log('query', query);
-
-        // Execute the query
-        result.rows = await sequelize.query(query, {
-            replacements: {
-                searchKey: searchKey,
-                EMPCode: req?.payload?.appUserId,
-                startDate: startDate,
-                endDate: endDate
-            },
-            type: QueryTypes.SELECT,
-        });
-
-        res.status(200).send({ data: result });
-    } catch (error: any) {
-        console.log(error);
-        if (error?.isJoi === true) error.status = 422;
-        next(error);
+    if (startDate && endDate) {
+      filter_query = `AND CAST(ve.createdAt AS DATE) BETWEEN :startDate AND :endDate`;
     }
+
+    let query: string;
+
+    if (DesigId === '4') {
+      // If user is self (e.g. employee)
+      query = `
+        SELECT 
+          ve.*, 
+          vs.*, 
+          emp.*, 
+          em.*, 
+          sts.*
+        FROM 
+          dbo.visitexpense AS ve
+          INNER JOIN dbo.visitsummary vs ON vs.VisitSummaryId = ve.VisitId
+          INNER JOIN dbo.employeedetails emp ON emp.EMPCode = ve.EmpCode
+          LEFT JOIN dbo.mstexpmode em ON em.ExpModeId = ve.expensemodeid
+          INNER JOIN dbo.mststatus sts ON sts.StatusId = ve.ExpenseStatusId
+        WHERE 
+          (emp.FirstName LIKE :searchKey OR emp.LastName LIKE :searchKey OR emp.EMPCode LIKE :searchKey)
+          AND ve.EmpCode = :EMPCode
+          AND ve.isActive = 1
+          ${filter_query}
+        ORDER BY ve.createdAt DESC
+      `;
+    } else {
+      // For manager/admin roles
+      query = `
+        SELECT 
+          ve.*, 
+          vs.*, 
+          emp.*, 
+          em.*, 
+          sts.*
+        FROM 
+          dbo.visitexpense AS ve
+          INNER JOIN dbo.visitsummary vs ON vs.VisitSummaryId = ve.VisitId
+          INNER JOIN dbo.employeedetails emp ON emp.EMPCode = ve.EmpCode
+          LEFT JOIN dbo.mstexpmode em ON em.ExpModeId = ve.expensemodeid
+          INNER JOIN dbo.mststatus sts ON sts.StatusId = ve.ExpenseStatusId
+        WHERE 
+          (emp.FirstName LIKE :searchKey OR emp.LastName LIKE :searchKey OR emp.EMPCode LIKE :searchKey)
+          AND (emp.MgrEmployeeID = :EMPCode OR ve.EmpCode = :EMPCode)
+          AND ve.isActive = 1
+          ${filter_query}
+        ORDER BY ve.createdAt DESC
+      `;
+    }
+
+    const result: any = await sequelize.query(query, {
+      replacements: {
+        searchKey,
+        EMPCode: req?.payload?.appUserId,
+        startDate,
+        endDate,
+      },
+      type: QueryTypes.SELECT,
+    });
+
+    // Parse JSON columns if any (like Expense_document)
+    const formattedData = result.map((item: any) => ({
+      ...item,
+      Expense_document: item?.Expense_document ? JSON.parse(item.Expense_document) : [],
+    }));
+
+    res.status(200).json({
+      Status: true,
+      ResponseMessage: "Full expense data fetched successfully",
+      DataCount: formattedData.length,
+      Data: formattedData,
+    });
+  } catch (error: any) {
+    console.log(error);
+    if (error?.isJoi === true) error.status = 422;
+    next(error);
+  }
 };
+
 
 const getExpenseById = async (req: RequestType, res: Response, next: NextFunction): Promise<void> => {
     try {
@@ -573,8 +666,6 @@ const expMstMode = async (req: RequestType, res: Response): Promise<void> => {
     }
 };
 
-
-
 const updateConvModeRate = async (req: RequestType, res: Response): Promise<void> => {
     try {
         const { ConvModeId, Rate } = req.body;
@@ -696,6 +787,5 @@ export {
     mstConMode,
     createExpense,
     uploadExpenseDoc,
-    updateConvModeRate,
-   
+    updateConvModeRate
 };

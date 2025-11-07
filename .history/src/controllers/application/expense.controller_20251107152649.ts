@@ -490,136 +490,136 @@ const updateConvModeRate = async (req: RequestType, res: Response): Promise<void
     }
 };
 
-const getAllExpense = async (req: RequestType, res: Response): Promise<void> => {
-    try {
+// const getAllExpense = async (req: RequestType, res: Response): Promise<void> => {
+//     try {
 
-        const VisitSummaryId = req.query.VisitSummaryId;
+//         const VisitSummaryId = req.query.VisitSummaryId;
 
-        if (!VisitSummaryId) {
-            res.status(422).json({ message: "Visit is not present" });
-        }
+//         if (!VisitSummaryId) {
+//             res.status(422).json({ message: "Visit is not present" });
+//         }
 
-        // console.log(VisitSummaryId, "VisitSummaryId")
+//         // console.log(VisitSummaryId, "VisitSummaryId")
 
-        let query = `
-    SELECT ve.ExpenseReqId,
-           ve.expense_doc, 
-           ve.amount AS Amount, 
-           (
-           SELECT STRING_AGG(
-               CONCAT(ed.ExpenseDocId, '|', ed.imageName, '|', ed.Amount, '|', ed.isVerified), '; '
-           ) 
-           FROM dbo.expensedocs ed
-           WHERE ed.ExpenseReqId = ve.ExpenseReqId
-           ) AS ExpenseDocs,
-           ve.createdAt, 
-           em.ExpModeDesc, 
-           ve.Rate, 
-           ve.updatedAt, 
-           vs.VisitFrom, 
-           vs.VisitTo, 
-           vs.VisitPurpose, 
-           cm.ConvModeDesc, 
-           sts.Description, 
-           (SELECT CONCAT(emp.FirstName, ' ', emp.LastName)
-            FROM dbo.employeedetails emp 
-            WHERE emp.EMPCode = ve.ApprovedById) AS ApprovedBy,
-           (SELECT CONCAT(emp.FirstName, ' ', emp.LastName) 
-            FROM dbo.employeedetails emp 
-            WHERE emp.EMPCode = ve.CheckedById) AS CheckedBy, 
-           ve.createdAt 
-    FROM dbo.visitexpense AS ve 
-    INNER JOIN dbo.visitsummary vs ON vs.VisitSummaryId = ve.VisitId 
-    INNER JOIN dbo.employeedetails emp ON emp.EMPCode = ve.EmpCode 
-    LEFT JOIN dbo.mstconvmode cm ON cm.ConvModeId = ve.ConvModeId 
-    LEFT JOIN dbo.mstexpmode em ON em.ExpModeId = ve.expensemodeid 
-    INNER JOIN dbo.mststatus sts ON sts.ExpancestatusId = ve.ExpenseStatusId 
-    WHERE ve.VisitId = :VisitSummaryId 
-          AND ve.isActive = 1`;
+//         let query = `
+//     SELECT ve.ExpenseReqId,
+//            ve.expense_doc, 
+//            ve.amount AS Amount, 
+//            (
+//            SELECT STRING_AGG(
+//                CONCAT(ed.ExpenseDocId, '|', ed.imageName, '|', ed.Amount, '|', ed.isVerified), '; '
+//            ) 
+//            FROM dbo.expensedocs ed
+//            WHERE ed.ExpenseReqId = ve.ExpenseReqId
+//            ) AS ExpenseDocs,
+//            ve.createdAt, 
+//            em.ExpModeDesc, 
+//            ve.Rate, 
+//            ve.updatedAt, 
+//            vs.VisitFrom, 
+//            vs.VisitTo, 
+//            vs.VisitPurpose, 
+//            cm.ConvModeDesc, 
+//            sts.Description, 
+//            (SELECT CONCAT(emp.FirstName, ' ', emp.LastName)
+//             FROM dbo.employeedetails emp 
+//             WHERE emp.EMPCode = ve.ApprovedById) AS ApprovedBy,
+//            (SELECT CONCAT(emp.FirstName, ' ', emp.LastName) 
+//             FROM dbo.employeedetails emp 
+//             WHERE emp.EMPCode = ve.CheckedById) AS CheckedBy, 
+//            ve.createdAt 
+//     FROM dbo.visitexpense AS ve 
+//     INNER JOIN dbo.visitsummary vs ON vs.VisitSummaryId = ve.VisitId 
+//     INNER JOIN dbo.employeedetails emp ON emp.EMPCode = ve.EmpCode 
+//     LEFT JOIN dbo.mstconvmode cm ON cm.ConvModeId = ve.ConvModeId 
+//     LEFT JOIN dbo.mstexpmode em ON em.ExpModeId = ve.expensemodeid 
+//     INNER JOIN dbo.mststatus sts ON sts.ExpancestatusId = ve.ExpenseStatusId 
+//     WHERE ve.VisitId = :VisitSummaryId 
+//           AND ve.isActive = 1`;
 
-        const result: any = await sequelize.query(query, {
-            replacements: { VisitSummaryId: VisitSummaryId },
-            type: QueryTypes.SELECT,
-        });
+//         const result: any = await sequelize.query(query, {
+//             replacements: { VisitSummaryId: VisitSummaryId },
+//             type: QueryTypes.SELECT,
+//         });
 
-        let query1 = `
-            SELECT
-            ve.ExpenseReqId,
-            ed.ExpenseDocId, 
-            ed.imageName, 
-            ed.Amount,
-            ed.isVerified
-            FROM dbo.expensedocs ed
-            INNER JOIN dbo.visitexpense ve ON ed.ExpenseReqId = ve.ExpenseReqId
-            WHERE ve.VisitId = :VisitSummaryId 
-            AND ve.isActive = 1`;
+//         let query1 = `
+//             SELECT
+//             ve.ExpenseReqId,
+//             ed.ExpenseDocId, 
+//             ed.imageName, 
+//             ed.Amount,
+//             ed.isVerified
+//             FROM dbo.expensedocs ed
+//             INNER JOIN dbo.visitexpense ve ON ed.ExpenseReqId = ve.ExpenseReqId
+//             WHERE ve.VisitId = :VisitSummaryId 
+//             AND ve.isActive = 1`;
 
-        const result1: any = await sequelize.query(query1, {
-            replacements: { VisitSummaryId: VisitSummaryId },
-            type: QueryTypes.SELECT,
-        });
+//         const result1: any = await sequelize.query(query1, {
+//             replacements: { VisitSummaryId: VisitSummaryId },
+//             type: QueryTypes.SELECT,
+//         });
 
-        // console.log(result, "result-----------")
+//         // console.log(result, "result-----------")
 
-        if (result?.length === 0) {
-            let query0 = 'SELECT vs.VisitFrom, vs.VisitTo, vs.VisitPurpose FROM dbo.visitsummary vs WHERE vs.VisitSummaryId=:VisitSummaryId';
+//         if (result?.length === 0) {
+//             let query0 = 'SELECT vs.VisitFrom, vs.VisitTo, vs.VisitPurpose FROM dbo.visitsummary vs WHERE vs.VisitSummaryId=:VisitSummaryId';
 
-            const result0: any = await sequelize.query(query0, {
-                replacements: { VisitSummaryId: VisitSummaryId },
-                type: QueryTypes.SELECT,
-            });
-            // console.log(result0, "result0");
-            const responseData = {
-                "ResponseMessage": "Success",
-                "Status": true,
-                "DataCount": 1,
-                "Data": {
-                    "ClaimDetails": [
-                        {
-                            "ExpenseReqId": null,
-                            "Amount": null,
-                            "ExpModeDesc": null,
-                            "Rate": null,
-                            "updatedAt": null,
-                            "VisitFrom": result0[0]?.VisitFrom,
-                            "VisitTo": result0[0]?.VisitTo,
-                            "VisitPurpose": result0[0]?.VisitPurpose,
-                            "ConvModeDesc": null,
-                            "Description": null,
-                            "ApprovedBy": null,
-                            "CheckedBy": null,
-                            "createdAt": null,
-                        }
-                    ]
-                },
-                claimData: result1,
-                "ResponseCode": "OK",
-                "confirmationbox": false
-            }
+//             const result0: any = await sequelize.query(query0, {
+//                 replacements: { VisitSummaryId: VisitSummaryId },
+//                 type: QueryTypes.SELECT,
+//             });
+//             // console.log(result0, "result0");
+//             const responseData = {
+//                 "ResponseMessage": "Success",
+//                 "Status": true,
+//                 "DataCount": 1,
+//                 "Data": {
+//                     "ClaimDetails": [
+//                         {
+//                             "ExpenseReqId": null,
+//                             "Amount": null,
+//                             "ExpModeDesc": null,
+//                             "Rate": null,
+//                             "updatedAt": null,
+//                             "VisitFrom": result0[0]?.VisitFrom,
+//                             "VisitTo": result0[0]?.VisitTo,
+//                             "VisitPurpose": result0[0]?.VisitPurpose,
+//                             "ConvModeDesc": null,
+//                             "Description": null,
+//                             "ApprovedBy": null,
+//                             "CheckedBy": null,
+//                             "createdAt": null,
+//                         }
+//                     ]
+//                 },
+//                 claimData: result1,
+//                 "ResponseCode": "OK",
+//                 "confirmationbox": false
+//             }
 
-            res.status(200).send(responseData);
-            return;
-        }
-        else {
-            const responseData = {
-                "ResponseMessage": "Success",
-                "Status": true,
-                "DataCount": result.length,
-                "Data": {
-                    "ClaimDetails": result
-                },
-                claimData: result1,
-                "ResponseCode": "OK",
-                "confirmationbox": false
-            }
+//             res.status(200).send(responseData);
+//             return;
+//         }
+//         else {
+//             const responseData = {
+//                 "ResponseMessage": "Success",
+//                 "Status": true,
+//                 "DataCount": result.length,
+//                 "Data": {
+//                     "ClaimDetails": result
+//                 },
+//                 claimData: result1,
+//                 "ResponseCode": "OK",
+//                 "confirmationbox": false
+//             }
 
-            res.status(200).send(responseData);
-        }
-    } catch (error: any) {
-        console.log(error.message, "error in get all expense");
-        res.status(500).send({ error: error });
-    }
-};
+//             res.status(200).send(responseData);
+//         }
+//     } catch (error: any) {
+//         console.log(error.message, "error in get all expense");
+//         res.status(500).send({ error: error });
+//     }
+// };
 
 const getAllExpenseList = async (req: RequestType, res: Response, next: NextFunction): Promise<void> => {
     try {

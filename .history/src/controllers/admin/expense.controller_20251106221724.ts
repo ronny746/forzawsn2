@@ -573,6 +573,70 @@ const expMstMode = async (req: RequestType, res: Response): Promise<void> => {
     }
 };
 
+const expMstModeAdd = async (req: RequestType, res: Response): Promise<void> => {
+  try {
+    const decoded = req.payload;
+    console.log("User:", decoded);
+
+    const { ExpModeDesc } = req.body;
+
+    // ✅ Validation
+    if (!ExpModeDesc || ExpModeDesc.trim() === "") {
+      res.status(400).json({
+        ResponseMessage: "ExpModeDesc is required",
+        Status: false,
+        DataCount: 0,
+        Data: [],
+        ResponseCode: "BAD_REQUEST",
+        confirmationbox: false
+      });
+      return;
+    }
+
+    // ✅ Insert query
+    const insertQuery = `
+      INSERT INTO dbo.mstexpmode (ExpModeDesc, IsActive, CreatedAt)
+      VALUES (:ExpModeDesc, 1, GETDATE())
+    `;
+
+    await sequelize.query(insertQuery, {
+      replacements: { ExpModeDesc },
+      type: QueryTypes.INSERT,
+    });
+
+    // ✅ Fetch updated list
+    const selectQuery = `SELECT * FROM dbo.mstexpmode WHERE IsActive = 1`;
+
+    const rows: any = await sequelize.query(selectQuery, {
+      type: QueryTypes.SELECT,
+    });
+
+    // ✅ Success response
+    res.status(200).json({
+      ResponseMessage: "New Expense Mode Added Successfully",
+      Status: true,
+      DataCount: rows.length,
+      Data: {
+        MstExpMode: rows.map((row: any) => ({
+          ddlId: row.ExpModeId,
+          ddlDesc: row.ExpModeDesc
+        }))
+      },
+      ResponseCode: "OK",
+      confirmationbox: true
+    });
+
+  } catch (error: any) {
+    console.log(error);
+    res.status(500).json({
+      ResponseMessage: "Internal Server Error",
+      Status: false,
+      Data: [],
+      ResponseCode: "SERVER_ERROR",
+      confirmationbox: false
+    });
+  }
+};
 
 
 const updateConvModeRate = async (req: RequestType, res: Response): Promise<void> => {
@@ -696,6 +760,5 @@ export {
     mstConMode,
     createExpense,
     uploadExpenseDoc,
-    updateConvModeRate,
-   
+    updateConvModeRate
 };

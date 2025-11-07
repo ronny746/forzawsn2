@@ -126,54 +126,55 @@ function getTotalDaysTillTodayExcludingSundays() {
 const getVisitForAttendence = async (req: RequestType, res: Response): Promise<void> => {
     try {
         const EMPCode = req?.payload?.EMPCode;
-        // console.log(req.payload, "req.payload.attendence");
-        const selectQuery = `
-        SELECT vs.VisitSummaryId, 
-            CONCAT(vs.VisitFrom, ' -', vs.VisitTo) AS VisitLocation, 
-            vs.VisitDate 
-        FROM dbo.visitsummary vs 
-        INNER JOIN dbo.visitdetails vd ON vd.VisitId = vs.VisitId 
-        INNER JOIN dbo.employeedetails emp ON emp.EMPCode = vd.EmpCode 
-        LEFT JOIN dbo.markattendance mka ON mka.VisitId = vs.VisitSummaryId 
-        WHERE 
-            emp.EMPCode = :EMPCode
-            AND vs.approvedStatus =  :approvedStatus 
-            AND CAST(vs.VisitDate AS DATE) = CAST(GETDATE() AS DATE)
-            ORDER BY
-            mka.PresentTimeIn DESC`;
 
-        let results: any = await sequelize.query(selectQuery, {
-            replacements: { EMPCode: EMPCode, approvedStatus: "Approved" },
+        // Step 1: Get today's visits
+        const visitQuery = `
+      SELECT vs.VisitSummaryId,
+          CONCAT(vs.VisitFrom, ' -', vs.VisitTo) AS VisitLocation,
+          vs.VisitDate
+      FROM dbo.visitsummary vs
+      INNER JOIN dbo.visitdetails vd ON vd.VisitId = vs.VisitId
+      INNER JOIN dbo.employeedetails emp ON emp.EMPCode = vd.EmpCode
+      WHERE emp.EMPCode = :EMPCode
+        AND vs.approvedStatus = :approvedStatus
+        AND CAST(vs.VisitDate AS DATE) = CAST(GETDATE() AS DATE)
+      ORDER BY vs.VisitDate DESC
+    `;
+
+        const allVisits: any[] = await sequelize.query(visitQuery, {
+            replacements: { EMPCode, approvedStatus: "Approved" },
             type: QueryTypes.SELECT,
         });
 
-        // Get the current date in the local timezone
-        // const currentDate = moment();
+        const finalVisits: any[] = [];
 
-        // // Calculate the offset for Indian timezone (UTC+5:30)
-        // const offsetHours = 5;
-        // const offsetMinutes = 30;
-        results.unshift({
-            "VisitSummaryId": "0",
-            "VisitLocation": "Un-planned",
-            "VisitDate": new Date(),
-        })
+        // Step 2: Pick the latest created visit (if any)
+        if (allVisits.length > 0) {
+            finalVisits.push(allVisits[0]); // latest visit based on VisitDate
+        }
+
+        // Step 3: Always add "Un-planned"
+        finalVisits.push({
+            VisitSummaryId: "0",
+            VisitLocation: "Un-planned",
+            VisitDate: new Date(),
+        });
 
         const responseData = {
-            "ResponseMessage": "Success",
-            "Status": true,
-            "DataCount": results?.length,
-            "Data": {
-                "VisitPlan": results
+            ResponseMessage: "Success",
+            Status: true,
+            DataCount: finalVisits.length,
+            Data: {
+                VisitPlan: finalVisits,
             },
-            "ResponseCode": "OK",
-            "confirmationbox": false
-        }
+            ResponseCode: "OK",
+            confirmationbox: false,
+        };
 
         res.status(200).json(responseData);
     } catch (error: any) {
-        console.log(error);
-        res.status(500).json({ error: error });
+        console.error(error);
+        res.status(500).json({ error: error.message || error });
     }
 };
 
@@ -334,7 +335,7 @@ const markAttendence = async (req: RequestType, res: Response): Promise<void> =>
                 replacements: { EMPCode: EMPCode },
                 type: QueryTypes.SELECT,
             });
-            if(checkInExistData.length !== 0) {
+            if (checkInExistData.length !== 0) {
                 res.status(500).send({
                     error: true,
                     data: {
@@ -472,12 +473,12 @@ const markAttendence = async (req: RequestType, res: Response): Promise<void> =>
 
             const updateQuery = 'UPDATE dbo.markattendance SET AttendanceType = :AttendanceType, PresentTimeOut=:PresentTimeOut, CheckOut=:CheckOut, CheckOutAddress=:CheckOutAddress, CheckOutAddressImage=:CheckOutAddressImage, CheckOutLat=:CheckOutLat, CheckOutLong=:CheckOutLong, Distance=:distance WHERE VisitId = :VisitSummaryId';
             const results: any = await sequelize.query(updateQuery, {
-                replacements: { 
-                    VisitSummaryId: VisitSummaryId, 
-                    PresentTimeOut: date.toISOString().slice(0, 19).replace('T', ' '), 
-                    CheckOut: 1, 
-                    AttendanceType: "Out", 
-                    CheckOutAddress: visit_address, 
+                replacements: {
+                    VisitSummaryId: VisitSummaryId,
+                    PresentTimeOut: date.toISOString().slice(0, 19).replace('T', ' '),
+                    CheckOut: 1,
+                    AttendanceType: "Out",
+                    CheckOutAddress: visit_address,
                     CheckOutAddressImage: place_image,
                     CheckOutLat: Latitude,
                     CheckOutLong: Longitude,
@@ -681,7 +682,7 @@ WHERE
 const getAttendenceStatus = async (req: RequestType, res: Response): Promise<void> => {
     try {
         const VisitId = req.query.VisitId;
-        if(Number(VisitId) === 1) {
+        if (Number(VisitId) === 1) {
             const responseData1 = {
                 "ResponseMessage": "Success",
                 "Status": true,
@@ -1138,7 +1139,7 @@ const updateAttendence = async (req: RequestType, res: Response): Promise<void> 
 
         const checkAttendeceQuery = 'SELECT VisitId From dbo.markattendance where Id=:attendenceId';
         const checkAttendeceExist: any = await sequelize.query(checkAttendeceQuery, {
-            replacements: { 
+            replacements: {
                 attendenceId: attendenceId,
             },
             type: QueryTypes.SELECT,
@@ -1155,7 +1156,7 @@ const updateAttendence = async (req: RequestType, res: Response): Promise<void> 
 
         const checkVisitQuery = 'SELECT VisitId From dbo.visitsummary where VisitSummaryId=:VisitSummaryId';
         const visitDetail: any = await sequelize.query(checkVisitQuery, {
-            replacements: { 
+            replacements: {
                 VisitSummaryId: checkAttendeceExist[0].VisitId,
             },
             type: QueryTypes.SELECT,
@@ -1181,11 +1182,11 @@ const updateAttendence = async (req: RequestType, res: Response): Promise<void> 
                             WHERE 
                             Id = :attendenceId`;
         const results: any = await sequelize.query(updateQuery, {
-            replacements: { 
+            replacements: {
                 attendenceId: attendenceId,
                 PresentTimeIn: FirstCheckInTime,
                 PresentTimeOut: LastCheckOutTime,
-                createdAt: createdAt, 
+                createdAt: createdAt,
                 distance: distance
             },
             type: QueryTypes.UPDATE,
@@ -1199,7 +1200,7 @@ const updateAttendence = async (req: RequestType, res: Response): Promise<void> 
                                         WHERE 
                                         VisitSummaryId = :VisitSummaryId`;
         await sequelize.query(updateVisitSummaryQuery, {
-            replacements: { 
+            replacements: {
                 VisitSummaryId: checkAttendeceExist[0].VisitId,
                 VisitDate: VisitDate,
                 createdAt: createdAt,
@@ -1216,7 +1217,7 @@ const updateAttendence = async (req: RequestType, res: Response): Promise<void> 
                                 WHERE 
                                 VisitId = :VisitId`;
         await sequelize.query(updateVisitQuery, {
-            replacements: { 
+            replacements: {
                 VisitId: visitDetail[0].VisitId,
                 VisitDate: VisitDate,
                 createdAt: createdAt,

@@ -9,11 +9,10 @@ appExpenseRouterV1.post('/create-expense', jwtModule.verifyAccessToken, appExpen
 appExpenseRouterV1.get('/get-expense', jwtModule.verifyAccessToken, appExpenseController.getAllExpense);
 appExpenseRouterV1.get('/exp-mst-mode', jwtModule.verifyAccessToken, appExpenseController.expMstMode);
 appExpenseRouterV1.get('/mst-con-mode', jwtModule.verifyAccessToken, appExpenseController.mstConMode);
+appExpenseRouterV1.post('/mst-con-mode/update', jwtModule.verifyAccessToken, updateConvModeRate);
 appExpenseRouterV1.get('/get-export-expense', jwtModule.verifyAccessToken, appExpenseController.getExportExpense);
 appExpenseRouterV1.get('/get-expense-by-id', jwtModule.verifyAccessToken, appExpenseController.getExpenseById);
 appExpenseRouterV1.post('/approve-disapprove-claim', jwtModule.verifyAccessToken, appExpenseController.approveDisapproveClaim);
 appExpenseRouterV1.post('/upload-expense-doc', jwtModule.verifyAccessToken, upload0.single('file'), appExpenseController.uploadExpenseDoc);
-
-
 
 export { appExpenseRouterV1 };

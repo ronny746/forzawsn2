@@ -14,6 +14,4 @@ appExpenseRouterV1.get('/get-expense-by-id', jwtModule.verifyAccessToken, appExp
 appExpenseRouterV1.post('/approve-disapprove-claim', jwtModule.verifyAccessToken, appExpenseController.approveDisapproveClaim);
 appExpenseRouterV1.post('/upload-expense-doc', jwtModule.verifyAccessToken, upload0.single('file'), appExpenseController.uploadExpenseDoc);
 
-
-
 export { appExpenseRouterV1 };

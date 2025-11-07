@@ -382,14 +382,11 @@ const expMstModeUpdateByDesc = async (req: RequestType, res: Response): Promise<
       });
     }
 
-    // ✅ Update BOTH: ExpModeId → 9 and Description
+    // ✅ Update query
     const updateQuery = `
       UPDATE dbo.mstexpmode
-      SET 
-        ExpModeId = 9, 
-        ExpModeDesc = :NewExpModeDesc
+      SET ExpModeDesc = :NewExpModeDesc
       WHERE ExpModeDesc = :OldExpModeDesc
-        OR ExpModeId IS NULL
     `;
 
     await sequelize.query(updateQuery, {
@@ -420,7 +417,7 @@ const expMstModeUpdateByDesc = async (req: RequestType, res: Response): Promise<
 
   } catch (error: any) {
     console.log(error);
-     res.status(500).json({
+    res.status(500).json({
       ResponseMessage: "Internal Server Error",
       Status: false,
       ResponseCode: "SERVER_ERROR",
@@ -428,7 +425,6 @@ const expMstModeUpdateByDesc = async (req: RequestType, res: Response): Promise<
     });
   }
 };
-
 
 
 const updateConvModeRate = async (req: RequestType, res: Response): Promise<void> => {

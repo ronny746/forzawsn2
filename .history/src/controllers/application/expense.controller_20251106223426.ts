@@ -345,7 +345,7 @@ const expMstModeUpdateByDesc = async (req: RequestType, res: Response): Promise<
 
     // ✅ Validation
     if (!OldExpModeDesc || OldExpModeDesc.trim() === "") {
-       res.status(400).json({
+      return res.status(400).json({
         ResponseMessage: "OldExpModeDesc is required",
         Status: false,
         ResponseCode: "BAD_REQUEST",
@@ -354,7 +354,7 @@ const expMstModeUpdateByDesc = async (req: RequestType, res: Response): Promise<
     }
 
     if (!NewExpModeDesc || NewExpModeDesc.trim() === "") {
-       res.status(400).json({
+      return res.status(400).json({
         ResponseMessage: "NewExpModeDesc is required",
         Status: false,
         ResponseCode: "BAD_REQUEST",
@@ -374,7 +374,7 @@ const expMstModeUpdateByDesc = async (req: RequestType, res: Response): Promise<
     });
 
     if (record.length === 0) {
-       res.status(404).json({
+      return res.status(404).json({
         ResponseMessage: "Record not found for given ExpModeDesc",
         Status: false,
         ResponseCode: "NOT_FOUND",
@@ -404,7 +404,7 @@ const expMstModeUpdateByDesc = async (req: RequestType, res: Response): Promise<
     );
 
     // ✅ Success response
-     res.status(200).json({
+    return res.status(200).json({
       ResponseMessage: "Expense Mode Updated Successfully",
       Status: true,
       DataCount: rows.length,
@@ -420,7 +420,7 @@ const expMstModeUpdateByDesc = async (req: RequestType, res: Response): Promise<
 
   } catch (error: any) {
     console.log(error);
-     res.status(500).json({
+    return res.status(500).json({
       ResponseMessage: "Internal Server Error",
       Status: false,
       ResponseCode: "SERVER_ERROR",

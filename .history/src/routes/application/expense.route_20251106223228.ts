@@ -10,8 +10,6 @@ appClaimRouterV1.get('/exp-mst-mode', jwtModule.verifyApplicationAccessToken, ap
 appClaimRouterV1.get('/mst-con-mode', jwtModule.verifyApplicationAccessToken, appExpenseController.mstConMode);
 appClaimRouterV1.post('/mst-con-mode/update' ,appExpenseController.updateConvModeRate);
 appClaimRouterV1.post('/exp-mode/add', appExpenseController.expMstModeAdd);
-appClaimRouterV1.post('/exp-mode/update-by-desc', appExpenseController.expMstModeUpdateByDesc);
-
 
 
 appClaimRouterV1.get('/get-expense', jwtModule.verifyApplicationAccessToken, appExpenseController.getAllExpense);

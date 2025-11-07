@@ -62,7 +62,7 @@ const getVisitForAttendence = async (req: RequestType, res: Response): Promise<v
 
         const replacements = {
             EMPCode: req?.payload?.appUserId,
-            approvedStatus: "Approved"
+            approvedStatus: "Approved",
         };
 
         const results: any = await sequelize.query(selectQuery, {

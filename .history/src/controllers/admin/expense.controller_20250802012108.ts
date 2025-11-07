@@ -573,68 +573,6 @@ const expMstMode = async (req: RequestType, res: Response): Promise<void> => {
     }
 };
 
-
-
-const updateConvModeRate = async (req: RequestType, res: Response): Promise<void> => {
-    try {
-        const { ConvModeId, Rate } = req.body;
-
-        if (!ConvModeId || Rate === undefined) {
-            res.status(400).json({
-                ResponseMessage: "ConvModeId and Rate are required",
-                Status: false,
-                ResponseCode: "BAD_REQUEST"
-            });
-            return;
-        }
-
-        const updateQuery = `
-            UPDATE dbo.mstconvmode
-            SET Rate = :Rate
-            WHERE ConvModeId = :ConvModeId
-        `;
-
-        const result: any = await sequelize.query(updateQuery, {
-            replacements: { ConvModeId, Rate },
-            type: QueryTypes.UPDATE
-        });
-
-        // If nothing was updated
-        if (result[1] === 0) {
-            res.status(404).json({
-                ResponseMessage: "No record found for the given ConvModeId",
-                Status: false,
-                ResponseCode: "NOT_FOUND"
-            });
-            return;
-        }
-
-        // Fetch updated data
-        const selectQuery = `SELECT * FROM dbo.mstconvmode WHERE IsActive = 1`;
-        const rows: any = await sequelize.query(selectQuery, {
-            type: QueryTypes.SELECT
-        });
-
-        res.status(200).json({
-            ResponseMessage: "Rate updated successfully",
-            Status: true,
-            DataCount: rows.length,
-            Data: rows,
-            ResponseCode: "OK",
-            confirmationbox: false
-        });
-    } catch (error: any) {
-        console.log(error);
-        res.status(500).json({
-            ResponseMessage: "Internal Server Error",
-            Status: false,
-            ResponseCode: "ERROR",
-            error: error.message
-        });
-    }
-};
-
-
 const mstConMode = async (req: RequestType, res: Response): Promise<void> => {
     try {
         const decoded = req.payload;
@@ -695,7 +633,5 @@ export {
     expMstMode,
     mstConMode,
     createExpense,
-    uploadExpenseDoc,
-    updateConvModeRate,
-   
+    uploadExpenseDoc
 };

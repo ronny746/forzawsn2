@@ -573,8 +573,6 @@ const expMstMode = async (req: RequestType, res: Response): Promise<void> => {
     }
 };
 
-
-
 const updateConvModeRate = async (req: RequestType, res: Response): Promise<void> => {
     try {
         const { ConvModeId, Rate } = req.body;
@@ -695,7 +693,5 @@ export {
     expMstMode,
     mstConMode,
     createExpense,
-    uploadExpenseDoc,
-    updateConvModeRate,
-   
+    uploadExpenseDoc
 };
