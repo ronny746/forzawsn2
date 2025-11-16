@@ -344,8 +344,11 @@ const getExportExpense = async (req: RequestType, res: Response, next: NextFunct
                 CONCAT(emp.FirstName, ' ', emp.LastName) as Name,
                 em.ExpModeDesc as ExpenseType,
                 ve.amount as Cost,
+                (SELECT CONCAT(emp.FirstName, ' ', emp.LastName) FROM dbo.employeedetails emp WHERE emp.EMPCode = ve.ApprovedById) as ApprovedByName,
+                (SELECT SUM(CAST(ed.Amount AS INT)) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType) as TotalApproveAmount,
+                ve.ApprovedById,
                 FORMAT(ve.createdAt AT TIME ZONE 'UTC' AT TIME ZONE 'India Standard Time', 'dd-MM-yyyy') AS ExpenseDate, 
-                vs.VisitFrom, 
+                vs.VisitFrom,
                 FORMAT(vs.VisitDate AT TIME ZONE 'UTC' AT TIME ZONE 'India Standard Time', 'dd-MM-yyyy') AS VisitDate, 
                 vs.VisitTo,
                 vs.VisitPurpose as Purpose  
@@ -370,6 +373,9 @@ const getExportExpense = async (req: RequestType, res: Response, next: NextFunct
                 CONCAT(emp.FirstName, ' ', emp.LastName) as Name,
                 em.ExpModeDesc as ExpenseType,
                 ve.amount as Cost,
+                (SELECT CONCAT(emp.FirstName, ' ', emp.LastName) FROM dbo.employeedetails emp WHERE emp.EMPCode = ve.ApprovedById) as ApprovedByName,
+                (SELECT SUM(CAST(ed.Amount AS INT)) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType) as TotalApproveAmount,
+                ve.ApprovedById,
                 FORMAT(ve.createdAt AT TIME ZONE 'UTC' AT TIME ZONE 'India Standard Time', 'dd-MM-yyyy') AS ExpenseDate, 
                 vs.VisitFrom,
                 FORMAT(vs.VisitDate AT TIME ZONE 'UTC' AT TIME ZONE 'India Standard Time', 'dd-MM-yyyy') AS VisitDate,
@@ -398,7 +404,8 @@ const getExportExpense = async (req: RequestType, res: Response, next: NextFunct
                 searchKey: searchKey,
                 EMPCode: req?.payload?.appUserId,
                 startDate: startDate,
-                endDate: endDate
+                endDate: endDate,
+                verifyType: "Approved"
             },
             type: QueryTypes.SELECT,
         });

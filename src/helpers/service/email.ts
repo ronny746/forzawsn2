@@ -25,8 +25,8 @@ const convertToExcel = async (data: any) => {
 let transporter = nodemailer.createTransport({
     service: "gmail",
     auth: {
-        user: "gkverma@forzamedi.com",
-        pass: "egvw rejv rpnk nrvg",
+        user: "Forza8638@gmail.com",
+        pass: "uais njfz rlqz czva",
     },
 });
 
@@ -70,7 +70,7 @@ const sentCreatedExpenseMail = async (attachment: any, data: any, ManagerEmail: 
 
         // Send mail with defined transport object
         let info = await transporter.sendMail({
-            from: 'gkverma@forzamedi.com',
+            from: 'Forza8638@gmail.com',
             to: ManagerEmail,
             // cc: 'hrgroup@forzamedi.com',
             subject: 'Expense',
@@ -110,7 +110,7 @@ const sentRejectExpenseMail = async (ExecutiveEmail: any, Amount: any, Executive
 
         // Send mail with defined transport object
         let info = await transporter.sendMail({
-            from: 'gkverma@forzamedi.com',
+            from: 'Forza8638@gmail.com',
             to: ExecutiveEmail,
             // cc: 'hrgroup@forzamedi.com',
             subject: 'Expense',
@@ -154,7 +154,7 @@ const sentApproveRejectVisitMail = async (visits: any, ManagerName: any, isAppro
 
         // Send mail with defined transport object
         let info = await transporter.sendMail({
-            from: 'gkverma@forzamedi.com',
+            from: 'Forza8638@gmail.com',
             to: visits[0]?.Email,
             // cc: 'hrgroup@forzamedi.com',
             subject: 'Visit Plan',
