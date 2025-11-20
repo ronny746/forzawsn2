@@ -135,6 +135,33 @@ const appAddUser = async (req: RequestType, res: Response): Promise<void> => {
     }
 };
 
+const getAllUser = async (req: RequestType, res: Response, next: NextFunction): Promise<void> => {
+    try {
+
+        const userQuery = 'SELECT EmployeeID, EMPCode, FirstName, LastName FROM dbo.employeedetails where isActive = 1';
+        const userData: any = await sequelize.query(userQuery, {
+            replacements: { MgrEmployeeID: req?.payload?.appUserId },
+            type: QueryTypes.SELECT,
+        });
+
+        if (res.headersSent === false) {
+            res.status(200).send({
+                error: false,
+                data: {
+                    data: {
+                        userData: userData
+                    },
+                    message: 'User fetch successfully.'
+                }
+            });
+        }
+    } catch (error: any) {
+        console.log(error)
+        if (error?.isJoi === true) error.status = 422;
+        next(error);
+    }
+}
+
 const addServiceArea = async (req: RequestType, res: Response): Promise<void> => {
     try {
 
@@ -505,6 +532,7 @@ const downloadTemplate = async (req: RequestType, res: Response, next: NextFunct
 // Export Methods
 export {
     appAddUser,
+    getAllUser,
     addServiceArea,
     addDesignation,
     getAppDropDownData,

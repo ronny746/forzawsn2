@@ -125,6 +125,78 @@ const sentRejectExpenseMail = async (ExecutiveEmail: any, Amount: any, Executive
     }
 };
 
+const sentRejectExpenseMailByHr = async (ExecutiveEmail: any, Amount: any, ExecutiveName: any, From: any, To: any, isHold: any) => {
+    try {
+
+        // console.log(tableRows, "tableRows")
+        const tableHTML = `
+        <div>
+        <h3>Hi ${ExecutiveName}</h3>
+        <p>Please find the expense ${isHold ? 'hold' : 'release'} by your HR.</p>
+        <br />
+            <p>Your expense of Amout ${Amount ? Amount : 'N/A'} From ${From} to ${To} is ${isHold ? 'Hold' : 'Release'}.</p>
+            <p>Please get in contact with the sales application support team with any issues or inquiries.</p>
+            <br />
+            <a href="https://wsn3.workgateway.in" target="_blank">Go to portal</a>
+            <p>Thank You,</p>
+            <p>Warm Regards,</p>
+            <p>Sales Application Support Team</p>
+            </div>
+          `;
+
+        // Send mail with defined transport object
+        let info = await transporter.sendMail({
+            from: 'Forza8638@gmail.com',
+            to: ExecutiveEmail,
+            // cc: 'hrgroup@forzamedi.com',
+            subject: 'Expense',
+            text: 'Please find the attached Excel file.',
+            html: `${tableHTML}`
+        });
+
+        console.log(info, "info");
+    }
+    catch (error) {
+        console.log(error, "error in expense email send");
+    }
+};
+
+const sentRejectExpenseMailByFinance = async (ExecutiveEmail: any, Amount: any, ExecutiveName: any, From: any, To: any, isHold: any) => {
+    try {
+
+        // console.log(tableRows, "tableRows")
+        const tableHTML = `
+        <div>
+        <h3>Hi ${ExecutiveName}</h3>
+        <p>Please find the expense ${isHold ? 'hold' : 'release'} by Finance Department.</p>
+        <br />
+            <p>Your expense of Amout ${Amount ? Amount : 'N/A'} From ${From} to ${To} is ${isHold ? 'Hold' : 'Release'}.</p>
+            <p>Please get in contact with the sales application support team with any issues or inquiries.</p>
+            <br />
+            <a href="https://wsn3.workgateway.in" target="_blank">Go to portal</a>
+            <p>Thank You,</p>
+            <p>Warm Regards,</p>
+            <p>Sales Application Support Team</p>
+            </div>
+          `;
+
+        // Send mail with defined transport object
+        let info = await transporter.sendMail({
+            from: 'Forza8638@gmail.com',
+            to: ExecutiveEmail,
+            // cc: 'hrgroup@forzamedi.com',
+            subject: 'Expense',
+            text: 'Please find the attached Excel file.',
+            html: `${tableHTML}`
+        });
+
+        console.log(info, "info");
+    }
+    catch (error) {
+        console.log(error, "error in expense email send");
+    }
+};
+
 const sentApproveRejectVisitMail = async (visits: any, ManagerName: any, isApprove: any) => {
     try {
 
@@ -174,5 +246,7 @@ export {
     sentCreatedExpenseMail,
     convertToExcel,
     sentRejectExpenseMail,
+    sentRejectExpenseMailByHr,
+    sentRejectExpenseMailByFinance,
     sentApproveRejectVisitMail
 }

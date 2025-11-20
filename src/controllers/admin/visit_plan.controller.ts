@@ -236,6 +236,7 @@ const getVisitDetail = async (req: RequestType, res: Response, next: NextFunctio
                 4 as adminId,
                 CONCAT(demp.FirstName, ' ', demp.LastName) as EmployeeName, 
                 (SELECT CONCAT(emp.FirstName, ' ', emp.LastName) FROM dbo.employeedetails emp WHERE emp.EMPCode = vst.CheckedById) as CheckedBy, 
+                (SELECT COUNT(VisitSummaryId) FROM dbo.visitsummary vs WHERE vs.VisitId = vst.VisitId) as total_visit, 
                 (SELECT CONCAT(emp.FirstName, ' ', emp.LastName) FROM dbo.employeedetails emp WHERE emp.EMPCode = vst.ApprovedBy) as ApprovedBy 
             FROM 
                 dbo.visitdetails AS vst 
