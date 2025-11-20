@@ -25,8 +25,8 @@ const convertToExcel = async (data: any) => {
 let transporter = nodemailer.createTransport({
     service: "gmail",
     auth: {
-        user: "gkverma@forzamedi.com",
-        pass: "egvw rejv rpnk nrvg",
+        user: "Forza8638@gmail.com",
+        pass: "uais njfz rlqz czva",
     },
 });
 
@@ -70,7 +70,7 @@ const sentCreatedExpenseMail = async (attachment: any, data: any, ManagerEmail: 
 
         // Send mail with defined transport object
         let info = await transporter.sendMail({
-            from: 'gkverma@forzamedi.com',
+            from: 'Forza8638@gmail.com',
             to: ManagerEmail,
             // cc: 'hrgroup@forzamedi.com',
             subject: 'Expense',
@@ -110,7 +110,79 @@ const sentRejectExpenseMail = async (ExecutiveEmail: any, Amount: any, Executive
 
         // Send mail with defined transport object
         let info = await transporter.sendMail({
-            from: 'gkverma@forzamedi.com',
+            from: 'Forza8638@gmail.com',
+            to: ExecutiveEmail,
+            // cc: 'hrgroup@forzamedi.com',
+            subject: 'Expense',
+            text: 'Please find the attached Excel file.',
+            html: `${tableHTML}`
+        });
+
+        console.log(info, "info");
+    }
+    catch (error) {
+        console.log(error, "error in expense email send");
+    }
+};
+
+const sentRejectExpenseMailByHr = async (ExecutiveEmail: any, Amount: any, ExecutiveName: any, From: any, To: any, isHold: any) => {
+    try {
+
+        // console.log(tableRows, "tableRows")
+        const tableHTML = `
+        <div>
+        <h3>Hi ${ExecutiveName}</h3>
+        <p>Please find the expense ${isHold ? 'hold' : 'release'} by your HR.</p>
+        <br />
+            <p>Your expense of Amout ${Amount ? Amount : 'N/A'} From ${From} to ${To} is ${isHold ? 'Hold' : 'Release'}.</p>
+            <p>Please get in contact with the sales application support team with any issues or inquiries.</p>
+            <br />
+            <a href="https://wsn3.workgateway.in" target="_blank">Go to portal</a>
+            <p>Thank You,</p>
+            <p>Warm Regards,</p>
+            <p>Sales Application Support Team</p>
+            </div>
+          `;
+
+        // Send mail with defined transport object
+        let info = await transporter.sendMail({
+            from: 'Forza8638@gmail.com',
+            to: ExecutiveEmail,
+            // cc: 'hrgroup@forzamedi.com',
+            subject: 'Expense',
+            text: 'Please find the attached Excel file.',
+            html: `${tableHTML}`
+        });
+
+        console.log(info, "info");
+    }
+    catch (error) {
+        console.log(error, "error in expense email send");
+    }
+};
+
+const sentRejectExpenseMailByFinance = async (ExecutiveEmail: any, Amount: any, ExecutiveName: any, From: any, To: any, isHold: any) => {
+    try {
+
+        // console.log(tableRows, "tableRows")
+        const tableHTML = `
+        <div>
+        <h3>Hi ${ExecutiveName}</h3>
+        <p>Please find the expense ${isHold ? 'hold' : 'release'} by Finance Department.</p>
+        <br />
+            <p>Your expense of Amout ${Amount ? Amount : 'N/A'} From ${From} to ${To} is ${isHold ? 'Hold' : 'Release'}.</p>
+            <p>Please get in contact with the sales application support team with any issues or inquiries.</p>
+            <br />
+            <a href="https://wsn3.workgateway.in" target="_blank">Go to portal</a>
+            <p>Thank You,</p>
+            <p>Warm Regards,</p>
+            <p>Sales Application Support Team</p>
+            </div>
+          `;
+
+        // Send mail with defined transport object
+        let info = await transporter.sendMail({
+            from: 'Forza8638@gmail.com',
             to: ExecutiveEmail,
             // cc: 'hrgroup@forzamedi.com',
             subject: 'Expense',
@@ -154,7 +226,7 @@ const sentApproveRejectVisitMail = async (visits: any, ManagerName: any, isAppro
 
         // Send mail with defined transport object
         let info = await transporter.sendMail({
-            from: 'gkverma@forzamedi.com',
+            from: 'Forza8638@gmail.com',
             to: visits[0]?.Email,
             // cc: 'hrgroup@forzamedi.com',
             subject: 'Visit Plan',
@@ -174,5 +246,7 @@ export {
     sentCreatedExpenseMail,
     convertToExcel,
     sentRejectExpenseMail,
+    sentRejectExpenseMailByHr,
+    sentRejectExpenseMailByFinance,
     sentApproveRejectVisitMail
 }

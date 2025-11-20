@@ -10,7 +10,7 @@ import { NextFunction, Response } from 'express';
 import sequelize from '../../helpers/common/init_mysql';
 import { RequestType } from '../../helpers/shared/shared.type';
 // import { convertToExcel, sentCreatedExpenseMail } from '../../helpers/service/email';
-import { sentRejectExpenseMail } from '../../helpers/service/email';
+import { sentRejectExpenseMail, sentRejectExpenseMailByFinance, sentRejectExpenseMailByHr } from '../../helpers/service/email';
 // import moment from 'moment';
 const {
     v4: uuidv4,
@@ -315,6 +315,121 @@ const getAllExpense = async (req: RequestType, res: Response, next: NextFunction
     }
 };
 
+const getAllExpenseForHr = async (req: RequestType, res: Response, next: NextFunction): Promise<void> => {
+    try {
+
+        // const DesigId = req?.payload?.DesigId;
+        let searchKey = req.query.searchKey;
+        const pageIndex: any = req.query.pageIndex || 0;
+        const pageSize: any = req.query.pageSize || 10;
+        const startDate: any = req.query.startDate;
+        const endDate: any = req.query.endDate;
+        let searchEMPCode: any = req.query.EMPCode || req?.payload?.appUserId;
+        if(req.query.EMPCode === "all") {
+            searchEMPCode = '';
+        }
+        console.log(searchEMPCode, startDate, endDate, "date==============>");
+
+        if (!searchKey) searchKey = "";
+        searchKey = "%" + searchKey + "%";
+
+        let filter_query = ``;
+
+        // Add date filtering if provided
+        if (startDate && endDate) {
+            filter_query = `AND CAST(ve.createdAt AS DATE) BETWEEN :startDate AND :endDate`
+        }
+        if (searchEMPCode) {
+            filter_query += ` AND emp.EMPCode=:searchEMPCode`
+        } 
+
+        let result: any = { count: 0, rows: [] };
+
+        let query: string;
+        query = `SELECT 
+            ve.*, 
+            vs.VisitFrom, 
+            vs.VisitTo, 
+            (SELECT CONCAT(emp.FirstName, ' ', emp.LastName) FROM dbo.employeedetails emp WHERE emp.EMPCode = ve.ApprovedById) as ApprovedByName, 
+            (SELECT SUM(CAST(ed.Amount AS INT)) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType) as TotalApproveAmount, 
+            emp.FirstName, 
+            emp.LastName,
+            emp.EMPCode, 
+            vs.VisitPurpose, 
+            em.ExpModeDesc, 
+            sts.Description as ExpenseStatus 
+        FROM 
+            dbo.visitexpense AS ve 
+            INNER JOIN dbo.visitsummary vs ON vs.VisitSummaryId = ve.VisitId 
+            INNER JOIN dbo.employeedetails emp ON emp.EMPCode = ve.EmpCode 
+            LEFT JOIN dbo.mstexpmode em ON em.ExpModeId = ve.expensemodeid
+            INNER JOIN dbo.mststatus sts ON sts.StatusId = ve.ExpenseStatusId 
+        WHERE 
+            (emp.FirstName LIKE :searchKey OR emp.LastName LIKE :searchKey OR emp.EMPCode LIKE :searchKey) 
+            AND ve.isActive = 1
+            ${filter_query}
+            order by ve.createdAt desc
+        `;
+
+        // Calculate row count if pageIndex is 0
+        if (pageIndex !== undefined && pageSize) {
+            if (pageIndex == 0) {
+                const rowsCount = await sequelize.query(query, {
+                    replacements: {
+                        searchKey: searchKey,
+                        EMPCode: req?.payload?.appUserId,
+                        searchEMPCode: searchEMPCode,
+                        startDate: startDate,
+                        endDate: endDate,
+                        verifyType: "Approved"
+                    },
+                    type: QueryTypes.SELECT,
+                });
+                result.count = rowsCount.length;
+            }
+
+            // Calculate offset and limit for pagination
+            const offset = pageSize * pageIndex;
+            query = query + `\n OFFSET ${offset} ROWS FETCH NEXT ${pageSize} ROWS ONLY`;
+        }
+
+        // console.log('query', query);
+
+        // Execute the query
+        result.rows = await sequelize.query(query, {
+            replacements: {
+                searchKey: searchKey,
+                EMPCode: req?.payload?.appUserId,
+                searchEMPCode: searchEMPCode,
+                startDate: startDate,
+                endDate: endDate,
+                verifyType: "Approved"
+            },
+            type: QueryTypes.SELECT,
+        });
+        // Transform the array
+        let transformedData = { count: 0, rows: [] };
+        transformedData.count = result.count;
+        console.log(result.rows, "dffd");
+        transformedData.rows = result.rows?.map((item: any) => {
+            // Parse the expenseDocs JSON string
+            const parsedExpenseDocs = JSON.parse(item.Expense_document);
+
+            // Return a new object with the parsed data
+            return {
+                ...item, // Spread all existing keys from the original item
+                Expense_document: parsedExpenseDocs // Overwrite expenseDocs with the parsed array
+            };
+        });
+
+        res.status(200).send({ data: transformedData });
+    } catch (error: any) {
+        console.log(error);
+        if (error?.isJoi === true) error.status = 422;
+        next(error);
+    }
+};
+
 const getExportExpense = async (req: RequestType, res: Response, next: NextFunction): Promise<void> => {
     try {
 
@@ -344,8 +459,11 @@ const getExportExpense = async (req: RequestType, res: Response, next: NextFunct
                 CONCAT(emp.FirstName, ' ', emp.LastName) as Name,
                 em.ExpModeDesc as ExpenseType,
                 ve.amount as Cost,
+                (SELECT CONCAT(emp.FirstName, ' ', emp.LastName) FROM dbo.employeedetails emp WHERE emp.EMPCode = ve.ApprovedById) as ApprovedByName,
+                (SELECT SUM(CAST(ed.Amount AS INT)) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType) as TotalApproveAmount,
+                ve.ApprovedById,
                 FORMAT(ve.createdAt AT TIME ZONE 'UTC' AT TIME ZONE 'India Standard Time', 'dd-MM-yyyy') AS ExpenseDate, 
-                vs.VisitFrom, 
+                vs.VisitFrom,
                 FORMAT(vs.VisitDate AT TIME ZONE 'UTC' AT TIME ZONE 'India Standard Time', 'dd-MM-yyyy') AS VisitDate, 
                 vs.VisitTo,
                 vs.VisitPurpose as Purpose  
@@ -370,6 +488,9 @@ const getExportExpense = async (req: RequestType, res: Response, next: NextFunct
                 CONCAT(emp.FirstName, ' ', emp.LastName) as Name,
                 em.ExpModeDesc as ExpenseType,
                 ve.amount as Cost,
+                (SELECT CONCAT(emp.FirstName, ' ', emp.LastName) FROM dbo.employeedetails emp WHERE emp.EMPCode = ve.ApprovedById) as ApprovedByName,
+                (SELECT SUM(CAST(ed.Amount AS INT)) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType) as TotalApproveAmount,
+                ve.ApprovedById,
                 FORMAT(ve.createdAt AT TIME ZONE 'UTC' AT TIME ZONE 'India Standard Time', 'dd-MM-yyyy') AS ExpenseDate, 
                 vs.VisitFrom,
                 FORMAT(vs.VisitDate AT TIME ZONE 'UTC' AT TIME ZONE 'India Standard Time', 'dd-MM-yyyy') AS VisitDate,
@@ -398,7 +519,8 @@ const getExportExpense = async (req: RequestType, res: Response, next: NextFunct
                 searchKey: searchKey,
                 EMPCode: req?.payload?.appUserId,
                 startDate: startDate,
-                endDate: endDate
+                endDate: endDate,
+                verifyType: "Approved"
             },
             type: QueryTypes.SELECT,
         });
@@ -517,6 +639,122 @@ const approveDisapproveClaim = async (req: RequestType, res: Response, next: Nex
                     data: results,
                     ExpenseReqId: ExpenseReqId,
                     message: 'Expense accept or reject successfully.'
+                }
+            });
+        }
+    } catch (error: any) {
+        console.log(error, "Approve or Reject Error")
+        if (error?.isJoi === true) error.status = 422;
+        next(error);
+    }
+};
+
+const approveDisapproveClaimByHr = async (req: RequestType, res: Response, next: NextFunction): Promise<void> => {
+    try {
+        const { ExpenseReqId, isHold, holdReason, ExpenseDocId } = req.body;
+        // console.log(req.body, "req.body");
+        const expenseUpdateQuery = 'UPDATE dbo.visitexpense SET ExpenseStatusChangeByHr=:ExpenseStatusChangeByHr where ExpenseReqId=:ExpenseReqId'
+        const results: any = await sequelize.query(expenseUpdateQuery, {
+            replacements: {
+                ExpenseStatusChangeByHr: 1,
+                ExpenseReqId: ExpenseReqId,            
+            },
+            type: QueryTypes.UPDATE,
+        });
+
+        const updateQuery = 'UPDATE dbo.expensedocs SET verificationStatusByHr=:verificationStatusByHr, StatusUpdatedByHrId=:StatusUpdatedByHrId, hold_reason_by_hr=:hold_reason_by_hr where ExpenseDocId=:ExpenseDocId'
+        await sequelize.query(updateQuery, {
+            replacements: {
+                StatusUpdatedByHrId: req?.payload?.appUserId,
+                verificationStatusByHr: isHold ? "Hold" : "Release",
+                ExpenseDocId: ExpenseDocId,
+                hold_reason_by_hr: holdReason
+            },
+            type: QueryTypes.UPDATE,
+        });
+
+        // const docQuery = 'SELECT ed.*, (select ve.* from dbo.visitexpense ve where ve.ExpenseReqId=ed.ExpenseReqId) FROM dbo.expensedocs ed INNER JOIN dbo.visitexpense ve on ve.ExpenseReqId=ve.ExpenseReqId INNER JOIN dbo.employeedetails emp on emp.EMPCode=ve.EmpCode where ed.ExpenseDocId = :ExpenseDocId';
+        const docQuery = 'SELECT ed.*, emp.*, vs.* FROM dbo.visitexpense ve INNER JOIN dbo.expensedocs ed on ed.ExpenseReqId=ve.ExpenseReqId INNER JOIN dbo.employeedetails emp on emp.EMPCode=ve.EmpCode INNER JOIN dbo.visitsummary vs on vs.VisitSummaryId=ve.VisitSummaryId where ed.ExpenseDocId = :ExpenseDocId';
+        const docData: any = await sequelize.query(docQuery, {
+            replacements: {
+                ExpenseDocId: ExpenseDocId,
+            },
+            type: QueryTypes.SELECT,
+        });
+
+        // console.log(docData, "docDAta");
+        const docData1 = docData[0];
+
+
+        // if (!isApprove) {
+            sentRejectExpenseMailByHr(docData1?.Email, docData1?.Amount, docData1?.FirstName + ' ' + docData1?.LastName, docData1.VisitFrom, docData1?.VisitTo, isHold);
+        // }
+
+        if (res.headersSent === false) {
+            res.status(200).send({
+                error: false,
+                data: {
+                    data: results,
+                    ExpenseReqId: ExpenseReqId,
+                    message: `Expense ${isHold ? 'holded' : 'release'} successfully.`
+                }
+            });
+        }
+    } catch (error: any) {
+        console.log(error, "Approve or Reject Error")
+        if (error?.isJoi === true) error.status = 422;
+        next(error);
+    }
+};
+
+const approveDisapproveClaimByFinance = async (req: RequestType, res: Response, next: NextFunction): Promise<void> => {
+    try {
+        const { ExpenseReqId, isHold, holdReason, ExpenseDocId } = req.body;
+
+        const selectQuery = 'UPDATE dbo.visitexpense SET ExpenseStatusChangeByFinance=:ExpenseStatusChangeByFinance where ExpenseReqId=:ExpenseReqId'
+        const results: any = await sequelize.query(selectQuery, {
+            replacements: {
+                ExpenseStatusChangeByFinance: 1,
+                ExpenseReqId: ExpenseReqId
+            },
+            type: QueryTypes.UPDATE,
+        });
+
+        const updateQuery = 'UPDATE dbo.expensedocs SET verificationStatusByFinance=:verificationStatusByFinance, ApprovedByFinanceId=:ApprovedByFinanceId, hold_reason_by_finance=:hold_reason_by_finance where ExpenseDocId=:ExpenseDocId'
+        await sequelize.query(updateQuery, {
+            replacements: {
+                ApprovedByFinanceId: req?.payload?.appUserId,
+                verificationStatusByFinance: isHold ? "Hold" : "Release",
+                ExpenseDocId: ExpenseDocId,
+                hold_reason_by_finance: holdReason
+            },
+            type: QueryTypes.UPDATE,
+        });
+
+        // const docQuery = 'SELECT ed.*, (select ve.* from dbo.visitexpense ve where ve.ExpenseReqId=ed.ExpenseReqId) FROM dbo.expensedocs ed INNER JOIN dbo.visitexpense ve on ve.ExpenseReqId=ve.ExpenseReqId INNER JOIN dbo.employeedetails emp on emp.EMPCode=ve.EmpCode where ed.ExpenseDocId = :ExpenseDocId';
+        const docQuery = 'SELECT ed.*, emp.*, vs.* FROM dbo.visitexpense ve INNER JOIN dbo.expensedocs ed on ed.ExpenseReqId=ve.ExpenseReqId INNER JOIN dbo.employeedetails emp on emp.EMPCode=ve.EmpCode INNER JOIN dbo.visitsummary vs on vs.VisitSummaryId=ve.VisitSummaryId where ed.ExpenseDocId = :ExpenseDocId';
+        const docData: any = await sequelize.query(docQuery, {
+            replacements: {
+                ExpenseDocId: ExpenseDocId,
+            },
+            type: QueryTypes.SELECT,
+        });
+
+        console.log(docData, "docDAta");
+        const docData1 = docData[0];
+
+
+        // if (!isApprove) {
+            sentRejectExpenseMailByFinance(docData1?.Email, docData1?.Amount, docData1?.FirstName + ' ' + docData1?.LastName, docData1.VisitFrom, docData1?.VisitTo, isHold);
+        // }
+
+        if (res.headersSent === false) {
+            res.status(200).send({
+                error: false,
+                data: {
+                    data: results,
+                    ExpenseReqId: ExpenseReqId,
+                    message: `Expense ${isHold ? 'holded' : 'release'} successfully.`
                 }
             });
         }
@@ -689,6 +927,7 @@ const uploadExpenseDoc = async (req: RequestType, res: Response): Promise<void> 
 // Export Methods
 export {
     getAllExpense,
+    getAllExpenseForHr,
     getExportExpense,
     approveDisapproveClaim,
     getExpenseById,
@@ -697,5 +936,6 @@ export {
     createExpense,
     uploadExpenseDoc,
     updateConvModeRate,
-   
+    approveDisapproveClaimByHr,
+    approveDisapproveClaimByFinance
 };

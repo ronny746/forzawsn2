@@ -10,6 +10,7 @@ const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 
 appUserDetailsRouterV1.post('/add-user', jwtModule.verifyAccessToken, appUserDetailsController.appAddUser);
+appUserDetailsRouterV1.get('/get-all-user', jwtModule.verifyAccessToken, appUserDetailsController.getAllUser);
 appUserDetailsRouterV1.post('/add-service-area', jwtModule.verifyAccessToken, appUserDetailsController.addServiceArea);
 appUserDetailsRouterV1.post('/add-designation', jwtModule.verifyAccessToken, appUserDetailsController.addDesignation);
 appUserDetailsRouterV1.post('/update-user', jwtModule.verifyAccessToken, appUserDetailsController.appUpdateUser);
