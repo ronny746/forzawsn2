@@ -69,6 +69,7 @@ const getVisitForAttendence = async (req: RequestType, res: Response): Promise<v
             replacements: replacements,
             type: QueryTypes.SELECT,
         });
+        console.log(results, "results");
         res.status(200).json({ data: results });
     } catch (error: any) {
         console.log(error)

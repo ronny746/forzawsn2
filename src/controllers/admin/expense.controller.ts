@@ -44,10 +44,23 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
             });
             return;
         }
-        if (!Data[0].file && Number(ExpModeId) !== 7) {
+        if (!Data[0].file && Number(ExpModeId) !== 9) {
             res.status(401).json({
                 error: true,
                 message: "Image is required for this expense" 
+            });
+            return;
+        }
+
+        let sum = 0;
+        for (let i = 0; i < Data.length; i++) {
+             sum += Number(Data[i].amount ? Data[i].amount : 0);
+        }
+
+        if(Data[0].file && (Number(sum) !== Number(Amount))) {
+            res.status(401).json({
+                error: true,
+                message: "Each amount of doc must be equal to Total expense"
             });
             return;
         }
@@ -72,11 +85,10 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
         }
 
         const emailGetQuery = `SELECT (SELECT Email from dbo.employeedetails as iemp where iemp.EMPCode = emp.MgrEmployeeID) as managerEmail, (SELECT CONCAT(FirstName, ' ', LastName) AS Name from dbo.employeedetails as iemp where iemp.EMPCode = emp.MgrEmployeeID) as managerName FROM dbo.employeedetails as emp where emp.EMPCode = :EMPCode`;
-        const emailGetDate: any = await sequelize.query(emailGetQuery, {
+        await sequelize.query(emailGetQuery, {
             replacements: { EMPCode: req?.payload?.appUserId },
             type: QueryTypes.INSERT,
         });
-        console.log(emailGetDate, "emailGetDate")
 
         const firstQuery = 'INSERT INTO dbo.visitexpense ';
         const insertQuery = `${firstQuery} (
@@ -138,6 +150,30 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
             });
         }
         }
+        if(!Data[0].file) {
+            const uuid1 = uuidv4();
+            const firstQuery = 'INSERT INTO dbo.expensedocs';
+            const insertQuery1 = `${firstQuery} (
+                ExpenseDocId,
+                ExpenseReqId,
+                Amount,
+                imageName,
+                isVerified,
+                isActive
+            ) VALUES (
+                '${uuid1}',
+                '${uuid}',
+                '${Amount ? Amount : 0}',
+                'temp',
+                '${"InProgress"}',
+                '${1}'
+            )`;
+
+            await sequelize.query(insertQuery1, {
+                replacements: {},
+                type: QueryTypes.INSERT,
+            });
+        }
 
         const getExpenseQuery = `SELECT emp.EMPCode as EmpId, CONCAT(emp.FirstName, ' -', emp.LastName) AS Name, mem.ExpModeDesc as ExpenseType, ve.amount as Cost, FORMAT(ve.createdAt AT TIME ZONE 'UTC' AT TIME ZONE 'India Standard Time', 'dd-MM-yyyy') AS Date, vs.VisitFrom, vs.VisitTo, vs.VisitPurpose as Purpose FROM dbo.visitexpense ve INNER JOIN dbo.employeedetails emp on emp.EMPCode = ve.EmpCode INNER JOIN dbo.visitsummary vs on vs.VisitSummaryId = ve.VisitSummaryId INNER JOIN dbo.mstexpmode mem on mem.ExpModeId = ve.expensemodeid where ve.ExpenseReqId =:ExpenseReqId`;
 
@@ -145,8 +181,6 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
             replacements: { ExpenseReqId: uuid },
             type: QueryTypes.INSERT,
         });
-
-        console.log(getExpenseDetail[0], "expenseDetail");
 
         let newAttachment: any = getExpenseDetail[0];
         newAttachment.push({ EmpId: "", Name: "", Expense: "", Cost: "", Date: "", VisitFrom: "", VisitTo: "", Purpose: "" });
@@ -437,7 +471,6 @@ const getExportExpense = async (req: RequestType, res: Response, next: NextFunct
         let searchKey = req.query.searchKey;
         const startDate: any = req.query.startDate;
         const endDate: any = req.query.endDate;
-        console.log(startDate, endDate, "date==============>");
 
         if (!searchKey) searchKey = "";
         searchKey = "%" + searchKey + "%";
@@ -461,6 +494,19 @@ const getExportExpense = async (req: RequestType, res: Response, next: NextFunct
                 ve.amount as Cost,
                 (SELECT CONCAT(emp.FirstName, ' ', emp.LastName) FROM dbo.employeedetails emp WHERE emp.EMPCode = ve.ApprovedById) as ApprovedByName,
                 (SELECT SUM(CAST(ed.Amount AS INT)) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType) as TotalApproveAmount,
+                (
+                SELECT 
+                    ed.ApprovedById AS StatusUpdateByManagerId,
+                    ed.isVerified AS StatusUpdateByManager,
+                    ed.StatusUpdatedByHrId AS StatusUpdateByHrId,
+                    ed.verificationStatusByHr AS StatusUpdateByHr,
+                    ed.ApprovedByFinanceId AS StatusUpdateByFinanceId,
+                    ed.verificationStatusByFinance AS StatusUpdateByFinance,
+                    ed.Amount
+                    FROM dbo.expensedocs ed
+                    WHERE ed.ExpenseReqId = ve.ExpenseReqId 
+                    FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+                ) AS StatusUpdateData,
                 ve.ApprovedById,
                 FORMAT(ve.createdAt AT TIME ZONE 'UTC' AT TIME ZONE 'India Standard Time', 'dd-MM-yyyy') AS ExpenseDate, 
                 vs.VisitFrom,
@@ -490,6 +536,19 @@ const getExportExpense = async (req: RequestType, res: Response, next: NextFunct
                 ve.amount as Cost,
                 (SELECT CONCAT(emp.FirstName, ' ', emp.LastName) FROM dbo.employeedetails emp WHERE emp.EMPCode = ve.ApprovedById) as ApprovedByName,
                 (SELECT SUM(CAST(ed.Amount AS INT)) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType) as TotalApproveAmount,
+                (
+                SELECT 
+                    ed.ApprovedById AS StatusUpdateByManagerId,
+                    ed.isVerified AS StatusUpdateByManager,
+                    ed.StatusUpdatedByHrId AS StatusUpdateByHrId,
+                    ed.verificationStatusByHr AS StatusUpdateByHr,
+                    ed.ApprovedByFinanceId AS StatusUpdateByFinanceId,
+                    ed.verificationStatusByFinance AS StatusUpdateByFinance,
+                    ed.Amount
+                    FROM dbo.expensedocs ed
+                    WHERE ed.ExpenseReqId = ve.ExpenseReqId
+                    FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+                ) AS StatusUpdateData,
                 ve.ApprovedById,
                 FORMAT(ve.createdAt AT TIME ZONE 'UTC' AT TIME ZONE 'India Standard Time', 'dd-MM-yyyy') AS ExpenseDate, 
                 vs.VisitFrom,
