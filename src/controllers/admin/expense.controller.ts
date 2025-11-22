@@ -688,7 +688,7 @@ const approveDisapproveClaim = async (req: RequestType, res: Response, next: Nex
 
 
         // if (!isApprove) {
-            sentRejectExpenseMail(docData1?.Email, docData1?.Amount, docData1?.FirstName + ' ' + docData1?.LastName, docData1.VisitFrom, docData1?.VisitTo, isApprove);
+            sentRejectExpenseMail(docData1?.Email, docData1?.Amount, docData1?.FirstName + ' ' + docData1?.LastName, docData1.VisitFrom, docData1?.VisitTo, isApprove, ExpenseReqId);
         // }
 
         if (res.headersSent === false) {
@@ -746,7 +746,7 @@ const approveDisapproveClaimByHr = async (req: RequestType, res: Response, next:
 
 
         // if (!isApprove) {
-            sentRejectExpenseMailByHr(docData1?.Email, docData1?.Amount, docData1?.FirstName + ' ' + docData1?.LastName, docData1.VisitFrom, docData1?.VisitTo, isHold);
+            sentRejectExpenseMailByHr(docData1?.Email, docData1?.Amount, docData1?.FirstName + ' ' + docData1?.LastName, docData1.VisitFrom, docData1?.VisitTo, isHold, ExpenseReqId);
         // }
 
         if (res.headersSent === false) {
@@ -804,7 +804,7 @@ const approveDisapproveClaimByFinance = async (req: RequestType, res: Response, 
 
 
         // if (!isApprove) {
-            sentRejectExpenseMailByFinance(docData1?.Email, docData1?.Amount, docData1?.FirstName + ' ' + docData1?.LastName, docData1.VisitFrom, docData1?.VisitTo, isHold);
+            sentRejectExpenseMailByFinance(docData1?.Email, docData1?.Amount, docData1?.FirstName + ' ' + docData1?.LastName, docData1.VisitFrom, docData1?.VisitTo, isHold, ExpenseReqId);
         // }
 
         if (res.headersSent === false) {
