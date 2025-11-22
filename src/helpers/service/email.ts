@@ -89,14 +89,23 @@ const sentCreatedExpenseMail = async (attachment: any, data: any, ManagerEmail: 
     }
 };
 
-const sentRejectExpenseMail = async (ExecutiveEmail: any, Amount: any, ExecutiveName: any, From: any, To: any, isApprove: any) => {
+const shortExpenseId = (id: any) => {
+        let hash = 0;
+        for (let i = 0; i < id.length; i++) {
+            hash = (hash << 5) - hash + id.charCodeAt(i);
+            hash |= 0; // convert to 32-bit int
+        }
+        return `${"FORZA"}-${Math.abs(hash).toString(36).toUpperCase()}`; // base36 = short
+    }
+
+const sentRejectExpenseMail = async (ExecutiveEmail: any, Amount: any, ExecutiveName: any, From: any, To: any, isApprove: any, ExpenseReqId: any) => {
     try {
 
         // console.log(tableRows, "tableRows")
         const tableHTML = `
         <div>
         <h3>Hi ${ExecutiveName}</h3>
-        <p>Please find the expense ${isApprove ? 'approve' : 'reject'} by your manager.</p>
+        <p>Please find the expense (Expense Id - ${shortExpenseId(ExpenseReqId)}) is ${isApprove ? 'approve' : 'reject'} by your manager.</p>
         <br />
             <p>Your expense of Amout ${Amount ? Amount : 'N/A'} From ${From} to ${To} is ${isApprove ? 'Approved' : 'Rejected'}.</p>
             <p>Please get in contact with the sales application support team with any issues or inquiries.</p>
@@ -112,7 +121,7 @@ const sentRejectExpenseMail = async (ExecutiveEmail: any, Amount: any, Executive
         let info = await transporter.sendMail({
             from: 'Forza8638@gmail.com',
             to: ExecutiveEmail,
-            // cc: 'hrgroup@forzamedi.com',
+            cc: 'hr@forzamedi.com',
             subject: 'Expense',
             text: 'Please find the attached Excel file.',
             html: `${tableHTML}`
@@ -125,7 +134,7 @@ const sentRejectExpenseMail = async (ExecutiveEmail: any, Amount: any, Executive
     }
 };
 
-const sentRejectExpenseMailByHr = async (ExecutiveEmail: any, Amount: any, ExecutiveName: any, From: any, To: any, isHold: any) => {
+const sentRejectExpenseMailByHr = async (ExecutiveEmail: any, Amount: any, ExecutiveName: any, From: any, To: any, isHold: any, ExpenseReqId: any) => {
     try {
 
         // console.log(tableRows, "tableRows")
@@ -134,7 +143,7 @@ const sentRejectExpenseMailByHr = async (ExecutiveEmail: any, Amount: any, Execu
         <h3>Hi ${ExecutiveName}</h3>
         <p>Please find the expense ${isHold ? 'hold' : 'release'} by your HR.</p>
         <br />
-            <p>Your expense of Amout ${Amount ? Amount : 'N/A'} From ${From} to ${To} is ${isHold ? 'Hold' : 'Release'}.</p>
+            <p>Your expense of Amout (Expense Id - ${shortExpenseId(ExpenseReqId)}) is ${Amount ? Amount : 'N/A'} From ${From} to ${To} is ${isHold ? 'Hold' : 'Release'}.</p>
             <p>Please get in contact with the sales application support team with any issues or inquiries.</p>
             <br />
             <a href="https://wsn3.workgateway.in" target="_blank">Go to portal</a>
@@ -148,7 +157,7 @@ const sentRejectExpenseMailByHr = async (ExecutiveEmail: any, Amount: any, Execu
         let info = await transporter.sendMail({
             from: 'Forza8638@gmail.com',
             to: ExecutiveEmail,
-            // cc: 'hrgroup@forzamedi.com',
+            cc: 'ramsingh@forzamedi.com',
             subject: 'Expense',
             text: 'Please find the attached Excel file.',
             html: `${tableHTML}`
@@ -161,14 +170,14 @@ const sentRejectExpenseMailByHr = async (ExecutiveEmail: any, Amount: any, Execu
     }
 };
 
-const sentRejectExpenseMailByFinance = async (ExecutiveEmail: any, Amount: any, ExecutiveName: any, From: any, To: any, isHold: any) => {
+const sentRejectExpenseMailByFinance = async (ExecutiveEmail: any, Amount: any, ExecutiveName: any, From: any, To: any, isHold: any, ExpenseReqId: any) => {
     try {
 
         // console.log(tableRows, "tableRows")
         const tableHTML = `
         <div>
         <h3>Hi ${ExecutiveName}</h3>
-        <p>Please find the expense ${isHold ? 'hold' : 'release'} by Finance Department.</p>
+        <p>Please find the expense (Expense Id - ${shortExpenseId(ExpenseReqId)}) is ${isHold ? 'hold' : 'release'} by Finance Department.</p>
         <br />
             <p>Your expense of Amout ${Amount ? Amount : 'N/A'} From ${From} to ${To} is ${isHold ? 'Hold' : 'Release'}.</p>
             <p>Please get in contact with the sales application support team with any issues or inquiries.</p>
