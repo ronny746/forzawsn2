@@ -38,70 +38,6 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
             res.status(422).json({ message: "Visit is not present" });
         }
 
-        // const checkQuery = `
-        // SELECT 
-        // CASE 
-        //     WHEN CONVERT(date, VisitDate) = CONVERT(date, GETDATE()) THEN 'true'
-        //     ELSE 'false'
-        // END AS IsCurrentDate
-        // FROM dbo.visitsummary
-        // WHERE VisitSummaryId = :VisitSummaryId`
-        // const checkBool: any = await sequelize.query(checkQuery, {
-        //     replacements: {
-        //         VisitSummaryId: VisitSummaryId
-        //     },
-        //     type: QueryTypes.SELECT,
-        // });
-
-        // console.log(checkBool[0]?.IsCurrentDate, typeof(checkBool[0]?.IsCurrentDate), "checkBool");
-        // if(checkBool[0]?.IsCurrentDate === "false")
-        //     {
-        //         const yesterdayCheckQuery = `
-        //         SELECT 
-        //         CASE 
-        //             WHEN EXISTS (
-        //                 SELECT 1
-        //                 FROM dbo.[mstholiday]
-        //                 WHERE CONVERT(date, HolidayDate) = DATEADD(day, -1, CONVERT(date, GETDATE()))
-        //             )
-        //             THEN 'true'
-        //             ELSE 'false'
-        //         END AS IsYesterdayPresent`;
-        //         const yesterdayCheckBool: any = await sequelize.query(yesterdayCheckQuery, {
-        //             replacements: {},
-        //             type: QueryTypes.SELECT,
-        //         });
-        //         // console.log(yesterdayCheckBool[0]?.IsYesterdayPresent, "yesterdayCheckBool");
-        //         if(yesterdayCheckBool === "true")
-        //         {
-        //             const checkBeforeYesterdayQuery = `
-        //             SELECT 
-        //             CASE 
-        //                 WHEN CONVERT(date, VisitDate) = DATEADD(day, -2, CONVERT(date, GETDATE())) THEN 'true'
-        //                 ELSE 'false'
-        //             END AS IsBeforeYesterDayDate
-        //             FROM dbo.visitsummary
-        //             WHERE VisitSummaryId = :VisitSummaryId`
-        //             const checkBeforeYesterdayBool: any = await sequelize.query(checkBeforeYesterdayQuery, {
-        //                 replacements: {
-        //                     VisitSummaryId: VisitSummaryId
-        //                 },
-        //                 type: QueryTypes.SELECT,
-        //             });
-        //             // console.log(checkBeforeYesterdayBool, "checkBeforeYesterdayBool");
-        //             if(checkBeforeYesterdayBool[0]?.IsBeforeYesterDayDate === "false")
-        //                 {
-        //                     res.status(500).json({ message: "Previous expense can not be claim" });
-        //                     return;
-        //                 }
-        //         }
-        //         else
-        //         {
-        //             res.status(500).json({ message: "Previous expense can not be claim" });
-        //             return;
-        //         }
-        //     }
-
         const emailGetQuery = `SELECT (SELECT Email from dbo.employeedetails as iemp where iemp.EMPCode = emp.MgrEmployeeID) as managerEmail, (SELECT CONCAT(FirstName, ' ', LastName) AS Name from dbo.employeedetails as iemp where iemp.EMPCode = emp.MgrEmployeeID) as managerName FROM dbo.employeedetails as emp where emp.EMPCode = :EMPCode`;
         const emailGetDate: any = await sequelize.query(emailGetQuery, {
             replacements: { EMPCode: decoded.EMPCode },
@@ -156,6 +92,31 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
                 '${uuid}',
                 '${Data[i].amount ? Data[i].amount : 0}',
                 '${Data[i].image}',
+                '${"InProgress"}',
+                '${1}'
+            )`;
+
+            await sequelize.query(insertQuery1, {
+                replacements: {},
+                type: QueryTypes.INSERT,
+            });
+        }
+
+        if(!Data[0].file) {
+            const uuid1 = uuidv4();
+            const firstQuery = 'INSERT INTO dbo.expensedocs';
+            const insertQuery1 = `${firstQuery} (
+                ExpenseDocId,
+                ExpenseReqId,
+                Amount,
+                imageName,
+                isVerified,
+                isActive
+            ) VALUES (
+                '${uuid1}',
+                '${uuid}',
+                '${Amount ? Amount : 0}',
+                'temp',
                 '${"InProgress"}',
                 '${1}'
             )`;
