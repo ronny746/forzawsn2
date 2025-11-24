@@ -22,7 +22,6 @@ const verifyApplicationAccessToken = async (req: RequestType, res: Response, nex
     if (authHeader) {
       accessToken = authHeader.split(' ')[1];
     }
-    console.log('Received JWT:', accessToken);  // Add this line for debugging
     const decode: any = JWT.verify(accessToken, 'rana');
     console.log(decode, 'decode')
     req.payload = decode;

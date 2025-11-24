@@ -29,13 +29,32 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
             Reason
         } = req.body;
 
-        // console.log(req.body, "create expense body===============");
-
         const decoded: any = req?.payload
         const uuid = uuidv4();
 
         if (!VisitSummaryId) {
             res.status(422).json({ message: "Visit is not present" });
+        }
+
+        if (!Data[0].file && Number(ExpModeId) !== 9) {
+            res.status(401).json({
+                error: true,
+                message: "Image is required for this expense" 
+            });
+            return;
+        }
+
+        let sum = 0;
+        for (let i = 0; i < Data.length; i++) {
+             sum += Number(Data[i].amount ? Data[i].amount : 0);
+        }
+
+        if(Data[0].file && (Number(sum) !== Number(Amount))) {
+            res.status(401).json({
+                error: true,
+                message: "Each amount of doc must be equal to Total expense"
+            });
+            return;
         }
 
         const emailGetQuery = `SELECT (SELECT Email from dbo.employeedetails as iemp where iemp.EMPCode = emp.MgrEmployeeID) as managerEmail, (SELECT CONCAT(FirstName, ' ', LastName) AS Name from dbo.employeedetails as iemp where iemp.EMPCode = emp.MgrEmployeeID) as managerName FROM dbo.employeedetails as emp where emp.EMPCode = :EMPCode`;
