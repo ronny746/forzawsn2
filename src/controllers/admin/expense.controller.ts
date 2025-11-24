@@ -103,7 +103,8 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
             Expense_document,
             Rate,
             Reason,
-            Distance
+            Distance,
+            deviceType
         ) VALUES (
             '${uuid}',
             '${req?.payload?.appUserId}',
@@ -116,7 +117,8 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
             '${JSON.stringify(Data)}',
             '${Rate}',
             '${Reason}',
-            '${Distance}'
+            '${Distance}',
+            'web'
         )`;
 
         await sequelize.query(insertQuery, {
@@ -124,33 +126,37 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
             type: QueryTypes.INSERT,
         });
 
-        for (let i = 0; i < Data.length; i++) {
-            if(Data[i].file) {
-            const uuid1 = uuidv4();
-            const firstQuery = 'INSERT INTO dbo.expensedocs';
-            const insertQuery1 = `${firstQuery} (
-                ExpenseDocId,
-                ExpenseReqId,
-                Amount,
-                imageName,
-                isVerified,
-                isActive
-            ) VALUES (
-                '${uuid1}',
-                '${uuid}',
-                '${Data[i].amount ? Data[i].amount : 0}',
-                '${Data[i].file}',
-                '${"InProgress"}',
-                '${1}'
-            )`;
+        const promises = Data.map(async (item: any) => {
+            if (!item.file) return; // skip if no file
 
-            await sequelize.query(insertQuery1, {
-                replacements: {},
+            const id = uuidv4();
+
+            const insertQuery = `
+                INSERT INTO dbo.expensedocs 
+                (ExpenseDocId, ExpenseReqId, Amount, imageName, isVerified, isActive, deviceType)
+                VALUES (:ExpenseDocId, :ExpenseReqId, :Amount, :imageName, :isVerified, :isActive, :deviceType)
+            `;
+
+            const params = {
+                ExpenseDocId: id,
+                ExpenseReqId: uuid,
+                Amount: item.amount || 0,
+                imageName: item.file,
+                isVerified: "InProgress",
+                isActive: 1,
+                deviceType: 'web'
+            };
+
+            return sequelize.query(insertQuery, {
+                replacements: params,
                 type: QueryTypes.INSERT,
             });
-        }
-        }
-        if(!Data[0].file) {
+        });
+
+        // Execute all queries in parallel
+        await Promise.all(promises);
+
+        if(!Data[0].file && Number(ExpModeId) === 9) {
             const uuid1 = uuidv4();
             const firstQuery = 'INSERT INTO dbo.expensedocs';
             const insertQuery1 = `${firstQuery} (
@@ -159,14 +165,16 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
                 Amount,
                 imageName,
                 isVerified,
-                isActive
+                isActive,
+                deviceType
             ) VALUES (
                 '${uuid1}',
                 '${uuid}',
                 '${Amount ? Amount : 0}',
                 'temp',
                 '${"InProgress"}',
-                '${1}'
+                '${1}',
+                'web'
             )`;
 
             await sequelize.query(insertQuery1, {
