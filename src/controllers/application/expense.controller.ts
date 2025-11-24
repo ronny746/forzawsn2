@@ -57,7 +57,8 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
             VisitRemarks,
             Expense_document,
             Rate,
-            Reason
+            Reason,
+            deviceType
         ) VALUES (
             '${uuid}',
             '${decoded.EMPCode}',
@@ -69,7 +70,8 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
             '${Remarks}',
             '${JSON.stringify(Data)}',
             '${Rate}',
-            '${Reason}'
+            '${Reason}',
+            'web'
         )`;
 
         await sequelize.query(insertQuery, {
@@ -77,32 +79,37 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
             type: QueryTypes.INSERT,
         });
 
-        for (let i = 0; i < Data.length; i++) {
-            const uuid1 = uuidv4();
-            const firstQuery = 'INSERT INTO dbo.expensedocs';
-            const insertQuery1 = `${firstQuery} (
-                ExpenseDocId,
-                ExpenseReqId,
-                Amount,
-                imageName,
-                isVerified,
-                isActive
-            ) VALUES (
-                '${uuid1}',
-                '${uuid}',
-                '${Data[i].amount ? Data[i].amount : 0}',
-                '${Data[i].image}',
-                '${"InProgress"}',
-                '${1}'
-            )`;
+        const promises = Data.map(async (item: any) => {
+            if (!item.file) return; // skip if no file
 
-            await sequelize.query(insertQuery1, {
-                replacements: {},
+            const id = uuidv4();
+
+            const insertQuery = `
+                INSERT INTO dbo.expensedocs 
+                (ExpenseDocId, ExpenseReqId, Amount, imageName, isVerified, isActive, deviceType)
+                VALUES (:ExpenseDocId, :ExpenseReqId, :Amount, :imageName, :isVerified, :isActive, :deviceType)
+            `;
+
+            const params = {
+                ExpenseDocId: id,
+                ExpenseReqId: uuid,
+                Amount: item.amount || 0,
+                imageName: item.file,
+                isVerified: "InProgress",
+                isActive: 1,
+                deviceType: 'web'
+            };
+
+            return sequelize.query(insertQuery, {
+                replacements: params,
                 type: QueryTypes.INSERT,
             });
-        }
+        });
+        
+        // Execute all queries in parallel
+        await Promise.all(promises);
 
-        if(!Data[0].file) {
+        if(Number(ExpModeId) === 9) {
             const uuid1 = uuidv4();
             const firstQuery = 'INSERT INTO dbo.expensedocs';
             const insertQuery1 = `${firstQuery} (
@@ -111,14 +118,16 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
                 Amount,
                 imageName,
                 isVerified,
-                isActive
+                isActive,
+                deviceType
             ) VALUES (
                 '${uuid1}',
                 '${uuid}',
                 '${Amount ? Amount : 0}',
                 'temp',
                 '${"InProgress"}',
-                '${1}'
+                '${1}',
+                'web'
             )`;
 
             await sequelize.query(insertQuery1, {
@@ -458,45 +467,43 @@ const getAllExpense = async (req: RequestType, res: Response): Promise<void> => 
 
         if (!VisitSummaryId) {
             res.status(422).json({ message: "Visit is not present" });
+            return;
         }
 
-        // console.log(VisitSummaryId, "VisitSummaryId")
-
-        let query = `
-    SELECT ve.ExpenseReqId,
-           ve.expense_doc, 
-           ve.amount AS Amount, 
-           (
-           SELECT STRING_AGG(
-               CONCAT(ed.ExpenseDocId, '|', ed.imageName, '|', ed.Amount, '|', ed.isVerified), '; '
-           ) 
-           FROM dbo.expensedocs ed
-           WHERE ed.ExpenseReqId = ve.ExpenseReqId
-           ) AS ExpenseDocs,
-           ve.createdAt, 
-           em.ExpModeDesc, 
-           ve.Rate, 
-           ve.updatedAt, 
-           vs.VisitFrom, 
-           vs.VisitTo, 
-           vs.VisitPurpose, 
-           cm.ConvModeDesc, 
-           sts.Description, 
-           (SELECT CONCAT(emp.FirstName, ' ', emp.LastName)
-            FROM dbo.employeedetails emp 
-            WHERE emp.EMPCode = ve.ApprovedById) AS ApprovedBy,
-           (SELECT CONCAT(emp.FirstName, ' ', emp.LastName) 
-            FROM dbo.employeedetails emp 
-            WHERE emp.EMPCode = ve.CheckedById) AS CheckedBy, 
-           ve.createdAt 
-    FROM dbo.visitexpense AS ve 
-    INNER JOIN dbo.visitsummary vs ON vs.VisitSummaryId = ve.VisitId 
-    INNER JOIN dbo.employeedetails emp ON emp.EMPCode = ve.EmpCode 
-    LEFT JOIN dbo.mstconvmode cm ON cm.ConvModeId = ve.ConvModeId 
-    LEFT JOIN dbo.mstexpmode em ON em.ExpModeId = ve.expensemodeid 
-    INNER JOIN dbo.mststatus sts ON sts.ExpancestatusId = ve.ExpenseStatusId 
-    WHERE ve.VisitId = :VisitSummaryId 
-          AND ve.isActive = 1`;
+        let query = `SELECT ve.ExpenseReqId,
+            ve.expense_doc, 
+            ve.amount AS Amount, 
+            (
+            SELECT STRING_AGG(
+                CONCAT(ed.ExpenseDocId, '|', ed.imageName, '|', ed.Amount, '|', ed.isVerified), '; '
+            ) 
+            FROM dbo.expensedocs ed
+            WHERE ed.ExpenseReqId = ve.ExpenseReqId
+            ) AS ExpenseDocs,
+            ve.createdAt, 
+            em.ExpModeDesc, 
+            ve.Rate, 
+            ve.updatedAt, 
+            vs.VisitFrom, 
+            vs.VisitTo, 
+            vs.VisitPurpose, 
+            cm.ConvModeDesc, 
+            sts.Description, 
+            (SELECT CONCAT(emp.FirstName, ' ', emp.LastName)
+                FROM dbo.employeedetails emp 
+                WHERE emp.EMPCode = ve.ApprovedById) AS ApprovedBy,
+            (SELECT CONCAT(emp.FirstName, ' ', emp.LastName) 
+                FROM dbo.employeedetails emp 
+                WHERE emp.EMPCode = ve.CheckedById) AS CheckedBy, 
+            ve.createdAt 
+        FROM dbo.visitexpense AS ve 
+        INNER JOIN dbo.visitsummary vs ON vs.VisitSummaryId = ve.VisitId 
+        INNER JOIN dbo.employeedetails emp ON emp.EMPCode = ve.EmpCode 
+        LEFT JOIN dbo.mstconvmode cm ON cm.ConvModeId = ve.ConvModeId 
+        LEFT JOIN dbo.mstexpmode em ON em.ExpModeId = ve.expensemodeid 
+        INNER JOIN dbo.mststatus sts ON sts.ExpancestatusId = ve.ExpenseStatusId 
+        WHERE ve.VisitId = :VisitSummaryId
+        AND ve.isActive = 1`;
 
         const result: any = await sequelize.query(query, {
             replacements: { VisitSummaryId: VisitSummaryId },
@@ -520,8 +527,6 @@ const getAllExpense = async (req: RequestType, res: Response): Promise<void> => 
             type: QueryTypes.SELECT,
         });
 
-        // console.log(result, "result-----------")
-
         if (result?.length === 0) {
             let query0 = 'SELECT vs.VisitFrom, vs.VisitTo, vs.VisitPurpose FROM dbo.visitsummary vs WHERE vs.VisitSummaryId=:VisitSummaryId';
 
@@ -529,7 +534,6 @@ const getAllExpense = async (req: RequestType, res: Response): Promise<void> => 
                 replacements: { VisitSummaryId: VisitSummaryId },
                 type: QueryTypes.SELECT,
             });
-            // console.log(result0, "result0");
             const responseData = {
                 "ResponseMessage": "Success",
                 "Status": true,
@@ -561,21 +565,18 @@ const getAllExpense = async (req: RequestType, res: Response): Promise<void> => 
             res.status(200).send(responseData);
             return;
         }
-        else {
-            const responseData = {
-                "ResponseMessage": "Success",
-                "Status": true,
-                "DataCount": result.length,
-                "Data": {
-                    "ClaimDetails": result
-                },
-                claimData: result1,
-                "ResponseCode": "OK",
-                "confirmationbox": false
-            }
-
-            res.status(200).send(responseData);
+        const responseData = {
+            "ResponseMessage": "Success",
+            "Status": true,
+            "DataCount": result.length,
+            "Data": {
+                "ClaimDetails": result
+            },
+            claimData: result1,
+            "ResponseCode": "OK",
+            "confirmationbox": false
         }
+        res.status(200).send(responseData);
     } catch (error: any) {
         console.log(error.message, "error in get all expense");
         res.status(500).send({ error: error });
