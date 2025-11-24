@@ -36,7 +36,7 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
             res.status(422).json({ message: "Visit is not present" });
         }
 
-        if (!Data[0].file && Number(ExpModeId) !== 9) {
+        if (Number(ExpModeId) !== 9) {
             res.status(401).json({
                 error: true,
                 message: "Image is required for this expense" 
