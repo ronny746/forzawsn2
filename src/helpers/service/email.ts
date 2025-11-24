@@ -147,7 +147,8 @@ const sentEmailToHr = async (Amount: any, ExecutiveName: any, isApprove: any, Ex
 
     await transporter.sendMail({
       from: 'Forza8638@gmail.com',
-      to: 'faizabadamit24@gmail.com',
+      to: 'hr@forzamedi.com',
+      cc: 'faizabadamit24@gmail.com',
       subject: `Expense Request Update – ${isApprove ? 'Approved' : 'Rejected'} (ID: ${shortExpenseId(ExpenseReqId)})`,
       text: `Expense request for ₹${Amount || 0} submitted by ${ExecutiveName} has been ${isApprove ? 'approved' : 'rejected'} by HOD.`,
       html: tableHTML
@@ -160,24 +161,52 @@ const sentEmailToHr = async (Amount: any, ExecutiveName: any, isApprove: any, Ex
 const sentEmailToFinance = async(Amount: any, ExecutiveName: any, isApprove: any, ExpenseReqId: any) => {
     try {
         const tableHTML = `
-        <div>
-        <h3>Dear Finance Team</h3>
-        <p>Expense Id - ${shortExpenseId(ExpenseReqId)})</p>
-        <br />
-            <p>The expense request submitted by ${ExecutiveName} for ₹${Amount ? Amount : 0} has been ${isApprove ? 'released' : 'hold'} by the HOD.
-            Please process it as per company policy.</p>
-            <p>Please get in contact with the sales application support team with any issues or inquiries.</p>
-            <br />
-            <a href="https://wsn3.workgateway.in" target="_blank">Go to portal</a>
-            <p>Thank You,</p>
-            <p>Warm Regards,</p>
-            <p>Sales Application Support Team</p>
-            </div>
-          `;
+        <div style="font-family: Arial, sans-serif; color: #333; padding: 20px;">
+            <h2 style="color: #0056b3; margin-bottom: 10px;">Expense Request Update</h2>
 
+            <p style="font-size: 15px; margin: 0;">Dear Finance Team,</p>
+            <br/>
+
+            <p style="font-size: 15px; margin: 0;">
+            <strong>Expense ID:</strong> ${shortExpenseId(ExpenseReqId)}
+            </p>
+
+            <p style="font-size: 15px; margin: 6px 0;">
+            The expense request submitted by <strong>${ExecutiveName}</strong> for 
+            <strong>₹${Amount || 0}</strong> has been 
+            <strong style="color: ${isApprove ? '#28a745' : '#d9534f'};">
+                ${isApprove ? 'approved' : 'rejected'}
+            </strong> by the HOD.
+            </p>
+
+            <p style="font-size: 15px; margin: 6px 0;">
+            Please process it as per the company policy.
+            </p>
+
+            <p style="font-size: 15px; margin: 6px 0;">
+            For any issues or inquiries, please contact the Sales Application Support Team.
+            </p>
+
+            <br/>
+
+            <a href="https://wsn3.workgateway.in" 
+            target="_blank"
+            style="display: inline-block; background: #0056b3; color: white; padding: 10px 18px; 
+            text-decoration: none; border-radius: 6px; font-size: 15px;">
+            Go to Portal
+            </a>
+
+            <br/><br/>
+
+            <p style="font-size: 15px; margin: 4px 0;">Thank you,</p>
+            <p style="font-size: 15px; margin: 2px 0;">Warm Regards,</p>
+            <p style="font-size: 15px; font-weight: bold; margin: 0;">Sales Application Support Team</p>
+        </div>
+        `;
         await transporter.sendMail({
             from: 'Forza8638@gmail.com',
             to: 'ramsingh@forzamedi.com',
+            cc: 'faizabadamit24@gmail.com',
             subject: 'Expense',
             text: 'Please find the update regarding the expense',
             html: `${tableHTML}`
