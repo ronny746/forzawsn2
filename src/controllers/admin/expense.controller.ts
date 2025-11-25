@@ -19,6 +19,15 @@ const { QueryTypes } = require("sequelize");
 
 // Controller Methods
 
+const shortExpenseId = (id: any) => {
+        let hash = 0;
+        for (let i = 0; i < id.length; i++) {
+            hash = (hash << 5) - hash + id.charCodeAt(i);
+            hash |= 0; // convert to 32-bit int
+        }
+        return `${"FORZA"}-${Math.abs(hash).toString(36).toUpperCase()}`; // base36 = short
+}
+
 const createExpense = async (req: RequestType, res: Response): Promise<void> => {
     try {
         const {
@@ -104,7 +113,8 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
             Rate,
             Reason,
             Distance,
-            deviceType
+            deviceType,
+            ExpenseId
         ) VALUES (
             '${uuid}',
             '${req?.payload?.appUserId}',
@@ -118,7 +128,8 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
             '${Rate}',
             '${Reason}',
             '${Distance}',
-            'web'
+            'web',
+            ${shortExpenseId(uuid)}
         )`;
 
         await sequelize.query(insertQuery, {

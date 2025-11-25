@@ -84,10 +84,20 @@ const isValidPassword = async (inputPassword: string, savedPassword: string): Pr
   return inputPassword === savedPassword;
 };
 
+const shortExpenseId = (id: any): any => {
+        let hash = 0;
+        for (let i = 0; i < id.length; i++) {
+            hash = (hash << 5) - hash + id.charCodeAt(i);
+            hash |= 0; // convert to 32-bit int
+        }
+        return `${'FORZA'}-${Math.abs(hash).toString(36).toUpperCase()}`; // base36 = short
+}
+
 export {
   sanitizeUrl,
   logBackendError,
   objectIdToString,
   getTokenExpTime,
   isValidPassword,
+  shortExpenseId
 };

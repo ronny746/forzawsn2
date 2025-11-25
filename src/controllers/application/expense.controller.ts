@@ -9,6 +9,7 @@ import { RequestType } from '../../helpers/shared/shared.type';
 // } from '../../helpers/joi/admin/user_details/index'
 import sequelize from '../../helpers/common/init_mysql';
 import { convertToExcel, sentCreatedExpenseMail } from '../../helpers/service/email';
+import { shortExpenseId } from '../../helpers/common/backend.functions';
 // import moment from 'moment';
 const {
     v4: uuidv4,
@@ -23,11 +24,12 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
             Amount,
             ExpModeId,
             VisitSummaryId,
-            Remarks,
+            Remarks = '',
             Data,
             Rate,
             Reason
         } = req.body;
+        console.log(req.body, "create expense payload data");
 
         const decoded: any = req?.payload
         const uuid = uuidv4();
@@ -36,13 +38,13 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
             res.status(422).json({ message: "Visit is not present" });
         }
 
-        if (!Data[0].file && Number(ExpModeId) !== 9) {
-            res.status(401).json({
-                error: true,
-                message: "Image is required for this expense" 
-            });
-            return;
-        }
+        // if (!Data[0].file && Number(ExpModeId) !== 9) {
+        //     res.status(401).json({
+        //         error: true,
+        //         message: "Image is required for this expense" 
+        //     });
+        //     return;
+        // }
 
         let sum = 0;
         for (let i = 0; i < Data.length; i++) {
@@ -77,7 +79,8 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
             Expense_document,
             Rate,
             Reason,
-            deviceType
+            deviceType,
+            ExpenseId
         ) VALUES (
             '${uuid}',
             '${decoded.EMPCode}',
@@ -90,7 +93,8 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
             '${JSON.stringify(Data)}',
             '${Rate}',
             '${Reason}',
-            'web'
+            'web',
+            ${shortExpenseId(uuid)}
         )`;
 
         await sequelize.query(insertQuery, {
