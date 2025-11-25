@@ -38,21 +38,21 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
             res.status(422).json({ message: "Visit is not present" });
         }
 
-        // if (!Data[0].file && Number(ExpModeId) !== 9) {
-        //     res.status(401).json({
-        //         error: true,
-        //         message: "Image is required for this expense" 
-        //     });
-        //     return;
-        // }
+        if (!Data[0].image && Number(ExpModeId) !== 9) {
+            res.status(422).json({
+                error: true,
+                message: "Image is required for this expense" 
+            });
+            return;
+        }
 
         let sum = 0;
         for (let i = 0; i < Data.length; i++) {
              sum += Number(Data[i].amount ? Data[i].amount : 0);
         }
 
-        if(Data[0].file && (Number(sum) !== Number(Amount))) {
-            res.status(401).json({
+        if(Data[0].image && (Number(sum) !== Number(Amount))) {
+            res.status(422).json({
                 error: true,
                 message: "Each amount of doc must be equal to Total expense"
             });
@@ -103,7 +103,7 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
         });
 
         const promises = Data.map(async (item: any) => {
-            if (!item.file) return; // skip if no file
+            if (!item.image) return; // skip if no file
 
             const id = uuidv4();
 
@@ -117,7 +117,7 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
                 ExpenseDocId: id,
                 ExpenseReqId: uuid,
                 Amount: item.amount || 0,
-                imageName: item.file,
+                imageName: item.image,
                 isVerified: "InProgress",
                 isActive: 1,
                 deviceType: 'web'
