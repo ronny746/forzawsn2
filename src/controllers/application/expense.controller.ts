@@ -38,20 +38,21 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
             res.status(422).json({ message: "Visit is not present" });
         }
 
-        if (!Data[0].image && Number(ExpModeId) !== 9) {
+        if ((!Data || Data.length === 0 || !Data[0].image) && Number(ExpModeId) !== 9) {
             res.status(422).json({
                 error: true,
-                message: "Image is required for this expense" 
+                message: "Image is required for this expense"
             });
             return;
         }
-
         let sum = 0;
-        for (let i = 0; i < Data.length; i++) {
-             sum += Number(Data[i].amount ? Data[i].amount : 0);
-        }
 
-        if(Data[0].image && (Number(sum) !== Number(Amount))) {
+        if (Array.isArray(Data)) {
+            for (let i = 0; i < Data.length; i++) {
+                sum += Number(Data[i]?.amount || 0);
+            }
+        }
+        if((!Data || Data.length === 0 || !Data[0].image) && (Number(sum) !== Number(Amount))) {
             res.status(422).json({
                 error: true,
                 message: "Each amount of doc must be equal to Total expense"
@@ -94,7 +95,7 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
             '${Rate}',
             '${Reason}',
             'web',
-            ${shortExpenseId(uuid)}
+            '${shortExpenseId(uuid)}'
         )`;
 
         await sequelize.query(insertQuery, {
