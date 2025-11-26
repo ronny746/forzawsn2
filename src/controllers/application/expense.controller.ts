@@ -52,7 +52,7 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
                 sum += Number(Data[i]?.amount || 0);
             }
         }
-        if((!Data || Data.length === 0 || !Data[0].image) && (Number(sum) !== Number(Amount))) {
+        if((Data.length > 0) && (Number(sum) !== Number(Amount))) {
             res.status(422).json({
                 error: true,
                 message: "Each amount of doc must be equal to Total expense"
