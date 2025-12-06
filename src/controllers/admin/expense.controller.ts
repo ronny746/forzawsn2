@@ -53,7 +53,7 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
             });
             return;
         }
-        if (!Data[0].file && Number(ExpModeId) !== 9) {
+        if (!Data[0].file && Number(ExpModeId) !== 9 &&  Number(ExpModeId) !== 7) {
             res.status(401).json({
                 error: true,
                 message: "Image is required for this expense" 
@@ -167,7 +167,7 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
         // Execute all queries in parallel
         await Promise.all(promises);
 
-        if(!Data[0].file && Number(ExpModeId) === 9) {
+        if(!Data[0].file && Number(ExpModeId) === 9 &&  Number(ExpModeId) === 7) {
             const uuid1 = uuidv4();
             const firstQuery = 'INSERT INTO dbo.expensedocs';
             const insertQuery1 = `${firstQuery} (
