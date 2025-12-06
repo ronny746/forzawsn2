@@ -206,9 +206,13 @@ const getVisitDetail = async (req: RequestType, res: Response, next: NextFunctio
             plannedQuery = `AND vst.isPlanned = ${Number(planned)}`
         }
 
-        // if (startDate && endDate) {
-        //     plannedQuery += `AND CAST(ma.PresentTimeIn AS DATE) BETWEEN :startDate AND :endDate`;
-        // }
+        if (startDate) {
+            plannedQuery += ` AND CAST(vst.FromDate AS DATE) >= :startDate `;
+        }
+
+        if (endDate) {
+            plannedQuery += ` AND CAST(vst.ToDate AS DATE) <= :endDate `;
+        }
         if (searchEMPCode) {
             plannedQuery += ` AND demp.EMPCode=:searchEMPCode`;
         }
@@ -248,8 +252,7 @@ const getVisitDetail = async (req: RequestType, res: Response, next: NextFunctio
                 AND vst.EmpCode = :EMPCode 
                 AND vst.isActive = 1
                 ${plannedQuery}
-                AND ddest.isActive = 1 
-                AND MONTH(vst.FromDate) = MONTH(GETDATE())
+                AND ddest.isActive = 1
                 ORDER BY 
                 vst.createdAt DESC
                 `;
@@ -283,8 +286,7 @@ const getVisitDetail = async (req: RequestType, res: Response, next: NextFunctio
             WHERE 
                 (demp.FirstName LIKE :searchKey OR demp.LastName LIKE :searchKey) 
                 AND (demp.MgrEmployeeID = :EMPCode OR vst.EmpCode = :EMPCode)
-                ${plannedQuery}
-                AND MONTH(vst.FromDate) = MONTH(GETDATE()) 
+                ${plannedQuery} 
                 ORDER BY 
                 vst.createdAt DESC
                 `;

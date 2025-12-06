@@ -508,11 +508,14 @@ const getExportExpense = async (req: RequestType, res: Response, next: NextFunct
             query = `
             SELECT
                 emp.EMPCode as EmployeeId,
+                ve.ExpenseId as ExpenseId,
                 CONCAT(emp.FirstName, ' ', emp.LastName) as Name,
                 em.ExpModeDesc as ExpenseType,
                 ve.amount as Cost,
                 (SELECT CONCAT(emp.FirstName, ' ', emp.LastName) FROM dbo.employeedetails emp WHERE emp.EMPCode = ve.ApprovedById) as ApprovedByName,
-                (SELECT SUM(CAST(ed.Amount AS INT)) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType) as TotalApproveAmount,
+                (SELECT SUM(CAST(ed.Amount AS INT)) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType AND verificationStatusByHr = :verificationStatusByHr AND verificationStatusByFinance = :verificationStatusByFinance) as TotalApproveAmount,
+                (SELECT SUM(CAST(ed.Amount AS INT)) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType1 AND verificationStatusByHr = :verificationStatusByHr1 AND verificationStatusByFinance = :verificationStatusByFinance1) as TotalRejectAmount,
+                (SELECT SUM(CAST(ed.Amount AS INT)) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType2 AND verificationStatusByHr = :verificationStatusByHr2 AND verificationStatusByFinance = :verificationStatusByFinance2) as TotalPendingAmount,
                 (
                 SELECT 
                     ed.ApprovedById AS StatusUpdateByManagerId,
@@ -550,11 +553,14 @@ const getExportExpense = async (req: RequestType, res: Response, next: NextFunct
             query = `
             SELECT 
                 emp.EMPCode as EmployeeId,
+                ve.ExpenseId as ExpenseId,
                 CONCAT(emp.FirstName, ' ', emp.LastName) as Name,
                 em.ExpModeDesc as ExpenseType,
-                ve.amount as Cost,
+                ve.amount as TotalAmount,
                 (SELECT CONCAT(emp.FirstName, ' ', emp.LastName) FROM dbo.employeedetails emp WHERE emp.EMPCode = ve.ApprovedById) as ApprovedByName,
-                (SELECT SUM(CAST(ed.Amount AS INT)) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType) as TotalApproveAmount,
+                (SELECT SUM(CAST(ed.Amount AS INT)) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType AND verificationStatusByHr = :verificationStatusByHr AND verificationStatusByFinance = :verificationStatusByFinance) as TotalApproveAmount,
+                (SELECT SUM(CAST(ed.Amount AS INT)) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType1 AND verificationStatusByHr = :verificationStatusByHr1 AND verificationStatusByFinance = :verificationStatusByFinance1) as TotalRejectAmount,
+                (SELECT SUM(CAST(ed.Amount AS INT)) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType2 AND verificationStatusByHr = :verificationStatusByHr2 AND verificationStatusByFinance = :verificationStatusByFinance2) as TotalPendingAmount,
                 (
                 SELECT 
                     ed.ApprovedById AS StatusUpdateByManagerId,
@@ -589,16 +595,21 @@ const getExportExpense = async (req: RequestType, res: Response, next: NextFunct
         `;
         }
 
-        // console.log('query', query);
-
-        // Execute the query
         result.rows = await sequelize.query(query, {
             replacements: {
                 searchKey: searchKey,
                 EMPCode: req?.payload?.appUserId,
                 startDate: startDate,
                 endDate: endDate,
-                verifyType: "Approved"
+                verifyType: "Approved",
+                verificationStatusByHr: "Approved",
+                verificationStatusByFinance: "Approved",
+                verifyType1: "Rejected",
+                verificationStatusByHr1: "Rejected",
+                verificationStatusByFinance1: "Rejected",
+                verifyType2: "InProgress",
+                verificationStatusByHr2: "InProgress",
+                verificationStatusByFinance2: "InProgress"
             },
             type: QueryTypes.SELECT,
         });
