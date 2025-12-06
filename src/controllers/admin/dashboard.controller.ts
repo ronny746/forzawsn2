@@ -5,30 +5,29 @@ import { RequestType } from '../../helpers/shared/shared.type';
 import sequelize from '../../helpers/common/init_mysql';
 // import storage from '../../helpers/common/init_firebase'
 // const { ref, getDownloadURL } = require('firebase/storage');
-const { QueryTypes } = require("sequelize");
+const { QueryTypes } = require('sequelize');
 
 // Controller Methods
 const appUserDetail = async (req: RequestType, res: Response): Promise<void> => {
-    try {
+  try {
+    const DesigId: any = req?.payload?.DesigId;
+    let searchKey = req.query.searchKey;
+    const pageIndex: any = req.query.pageIndex || 0;
+    const pageSize: any = req.query.pageSize || 10;
 
-        const DesigId: any = req?.payload?.DesigId;
-        let searchKey = req.query.searchKey;
-        const pageIndex: any = req.query.pageIndex || 0;
-        const pageSize: any = req.query.pageSize || 10;
+    if (!searchKey) searchKey = '';
+    searchKey = '%' + searchKey + '%';
+    // console.log(req?.payload?.appUserId, "req?.payload?.appUserId", typeof (DesigId));
 
-        if (!searchKey) searchKey = "";
-        searchKey = '%' + searchKey + '%';
-        // console.log(req?.payload?.appUserId, "req?.payload?.appUserId", typeof (DesigId));
+    let result: any = { count: 0, rows: [] };
 
-        let result: any = { count: 0, rows: [] };
+    let endQuery = ``;
 
-        let endQuery = ``;
+    if (DesigId !== '5') {
+      endQuery = `AND demp.MgrEmployeeID = :MgrEmployeeID`;
+    }
 
-        if (DesigId !== '5') {
-            endQuery = `AND demp.MgrEmployeeID = :MgrEmployeeID`
-        }
-
-        let query = `
+    let query = `
             SELECT 
                 demp.EMPCode, 
                 demp.FirstName, 
@@ -54,39 +53,38 @@ const appUserDetail = async (req: RequestType, res: Response): Promise<void> => 
                  ${endQuery}
                 AND ddest.isActive = 1`;
 
-        const rowsCount = await sequelize.query(query, {
-            replacements: { searchKey: searchKey, MgrEmployeeID: req?.payload?.appUserId },
-            type: QueryTypes.SELECT
-        });
+    const rowsCount = await sequelize.query(query, {
+      replacements: { searchKey: searchKey, MgrEmployeeID: req?.payload?.appUserId },
+      type: QueryTypes.SELECT
+    });
 
-        result.count = rowsCount.length;
+    result.count = rowsCount.length;
 
-        if (pageIndex !== undefined && pageSize) {
-            const offset = pageSize * pageIndex;
-            query += ` ORDER BY createdAt OFFSET ${offset} ROWS FETCH NEXT ${pageSize} ROWS ONLY`;
-        }
-
-        const rows = await sequelize.query(query, {
-            replacements: { searchKey: searchKey, MgrEmployeeID: req?.payload?.appUserId },
-            type: QueryTypes.SELECT
-        });
-
-        result.rows = rows;
-
-        // console.log('Result:', result);
-        res.status(200).send({ data: result });
-    } catch (error: any) {
-        console.log(error, "get user error")
-        res.status(500).send({ message: error.message || "Internal server error" });
+    if (pageIndex !== undefined && pageSize) {
+      const offset = pageSize * pageIndex;
+      query += ` ORDER BY createdAt OFFSET ${offset} ROWS FETCH NEXT ${pageSize} ROWS ONLY`;
     }
+
+    const rows = await sequelize.query(query, {
+      replacements: { searchKey: searchKey, MgrEmployeeID: req?.payload?.appUserId },
+      type: QueryTypes.SELECT
+    });
+
+    result.rows = rows;
+
+    // console.log('Result:', result);
+    res.status(200).send({ data: result });
+  } catch (error: any) {
+    console.log(error, 'get user error');
+    res.status(500).send({ message: error.message || 'Internal server error' });
+  }
 };
 
 const getDashboardDetail = async (req: RequestType, res: Response): Promise<void> => {
-    try {
+  try {
+    console.log(req?.payload?.appUserId, 'req?.payload?.appUserId');
 
-        console.log(req?.payload?.appUserId, "req?.payload?.appUserId");
-
-        let query = `
+    let query = `
             SELECT 
                 COUNT(*) AS total_visits, -- Count all visits
                 SUM(CASE WHEN isPlanned = 1 THEN 1 ELSE 0 END) AS planned_visits, -- Count visits where isPlanned = 1
@@ -95,12 +93,12 @@ const getDashboardDetail = async (req: RequestType, res: Response): Promise<void
                 dbo.visitsummary;
         `;
 
-        const result: any = await sequelize.query(query, {
-            replacements: {},
-            type: QueryTypes.SELECT
-        });
+    const result: any = await sequelize.query(query, {
+      replacements: {},
+      type: QueryTypes.SELECT
+    });
 
-        const query1 = `
+    const query1 = `
         SELECT
         MONTH([VisitDate]) AS MonthNumber,
         COUNT(*) AS VisitCount
@@ -111,30 +109,155 @@ const getDashboardDetail = async (req: RequestType, res: Response): Promise<void
     GROUP BY
         MONTH([VisitDate])
     ORDER BY
-        MonthNumber;`
-        const result1: any = await sequelize.query(query1, {
-            type: QueryTypes.SELECT
-        });
+        MonthNumber;`;
+    const result1: any = await sequelize.query(query1, {
+      type: QueryTypes.SELECT
+    });
 
-        let visitCounts = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-        for (let i = 0; i < result1.length; i++) {
-            visitCounts[(result1[i]?.MonthNumber) - 1] = result1[i]?.VisitCount;
-        }
-
-        res.status(200).send({
-            total_visits: result[0].total_visits,
-            planned_visits: result[0].planned_visits,
-            unplanned_visits: result[0].unplanned_visits,
-            visitCounts: visitCounts
-        });
-    } catch (error: any) {
-        console.log(error, "get user error")
-        res.status(401).send({ message: "Internal server error" });
+    let visitCounts = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    for (let i = 0; i < result1.length; i++) {
+      visitCounts[result1[i]?.MonthNumber - 1] = result1[i]?.VisitCount;
     }
+
+    res.status(200).send({
+      total_visits: result[0].total_visits,
+      planned_visits: result[0].planned_visits,
+      unplanned_visits: result[0].unplanned_visits,
+      visitCounts: visitCounts
+    });
+  } catch (error: any) {
+    console.log(error, 'get user error');
+    res.status(401).send({ message: 'Internal server error' });
+  }
+};
+
+const getExpenseAnalyticData = async (req: RequestType, res: Response): Promise<void> => {
+  try {
+    console.log(req?.payload?.appUserId, 'req?.payload?.appUserId');
+
+    let queryTotal = `
+      SELECT SUM(ISNULL(TRY_CAST(ed.Amount AS DECIMAL(18,2)), 0)) AS TotalAmount
+      FROM dbo.expensedocs ed
+    `;
+
+    let queryApprove = `
+      SELECT SUM(ISNULL(TRY_CAST(ed.Amount AS DECIMAL(18,2)), 0)) AS TotalApproveAmount
+      FROM dbo.expensedocs ed
+      WHERE ed.isVerified = :verifyType
+      AND verificationStatusByHr = :verificationStatusByHr
+      AND verificationStatusByFinance = :verificationStatusByFinance
+    `;
+
+    let queryReject = `
+      SELECT SUM(ISNULL(TRY_CAST(ed.Amount AS DECIMAL(18,2)), 0)) AS TotalRejectAmount
+      FROM dbo.expensedocs ed
+      WHERE ed.isVerified = :verifyType1
+      AND verificationStatusByHr = :verificationStatusByHr1
+      AND verificationStatusByFinance = :verificationStatusByFinance1
+    `;
+
+    let queryProgress = `
+      SELECT SUM(ISNULL(TRY_CAST(ed.Amount AS DECIMAL(18,2)), 0)) AS TotalPendingAmount
+      FROM dbo.expensedocs ed
+      WHERE ed.isVerified = :verifyType2
+      AND verificationStatusByHr = :verificationStatusByHr2
+      AND verificationStatusByFinance = :verificationStatusByFinance2
+    `;
+
+    const resultTotal: any = await sequelize.query(queryTotal, {
+      type: QueryTypes.SELECT
+    });
+
+    const resultProgress: any = await sequelize.query(queryProgress, {
+      replacements: {
+        verifyType2: 'InProgress',
+        verificationStatusByHr2: 'InProgress',
+        verificationStatusByFinance2: 'InProgress'
+      },
+      type: QueryTypes.SELECT
+    });
+
+    const resultApprove: any = await sequelize.query(queryApprove, {
+      replacements: {
+        verifyType: 'Approved',
+        verificationStatusByHr: 'Approved',
+        verificationStatusByFinance: 'Approved'
+      },
+      type: QueryTypes.SELECT
+    });
+
+    const resultReject: any = await sequelize.query(queryReject, {
+      replacements: {
+        verifyType1: 'Rejected',
+        verificationStatusByHr1: 'Rejected',
+        verificationStatusByFinance1: 'Rejected'
+      },
+      type: QueryTypes.SELECT
+    });
+
+    res.status(200).send({
+      success: true,
+      message: 'Expense analytic data fetched successfully',
+      totalData: resultTotal[0]?.TotalAmount || 0,
+      progressData: resultProgress[0]?.TotalPendingAmount || 0,
+      approveData: resultApprove[0]?.TotalApproveAmount || 0,
+      rejectData: resultReject[0]?.TotalRejectAmount || 0
+    });
+  } catch (error: any) {
+    console.log(error, 'get user error');
+    res.status(500).send({ message: 'Internal server error' });
+  }
+};
+
+const getTodayLogData = async (req: RequestType, res: Response): Promise<void> => {
+  try {
+    console.log(req?.payload?.appUserId, 'req?.payload?.appUserId');
+
+    let queryVisit = `
+       SELECT COUNT(VisitSummaryId) AS TotalVisits
+       FROM dbo.visitsummary
+       WHERE CAST(VisitDate AS DATE) = CAST(GETDATE() AS DATE)
+    `;
+
+    let queryExpense = `
+      SELECT COUNT(ve.ExpenseReqId) AS TotalExpenses
+      FROM dbo.visitexpense ve
+      WHERE CAST(ve.createdAt AS DATE) = CAST(GETDATE() AS DATE)
+    `;
+
+    let queryAttendence = `
+      SELECT COUNT(atd.id) AS TotalAttendenceLogs
+        FROM dbo.markattendance atd
+        WHERE CAST(atd.createdAt AS DATE) = CAST(GETDATE() AS DATE) AND atd.CheckIn = 1
+    `;
+
+    const resultVisit: any = await sequelize.query(queryVisit, {
+      replacements: {},
+      type: QueryTypes.SELECT
+    });
+
+    const resultExpense: any = await sequelize.query(queryExpense, {
+      replacements: {},
+      type: QueryTypes.SELECT
+    });
+
+    const resultAttendence: any = await sequelize.query(queryAttendence, {
+      replacements: {},
+      type: QueryTypes.SELECT
+    });
+
+    res.status(200).send({
+      success: true,
+      message: 'Today log data fetched successfully',
+      totalVisits: resultVisit[0]?.TotalVisits || 0,
+      totalExpenses: resultExpense[0]?.TotalExpenses || 0,
+      totalAttendenceLogs: resultAttendence[0]?.TotalAttendenceLogs || 0
+    });
+  } catch (error: any) {
+    console.log(error, 'get user error');
+    res.status(500).send({ message: 'Internal server error' });
+  }
 };
 
 // Export Methods
-export {
-    appUserDetail,
-    getDashboardDetail
-};
+export { appUserDetail, getDashboardDetail, getExpenseAnalyticData, getTodayLogData };
