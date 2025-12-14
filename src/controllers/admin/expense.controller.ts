@@ -129,7 +129,7 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
             '${Reason}',
             '${Distance}',
             'web',
-            ${shortExpenseId(uuid)}
+            '${shortExpenseId(uuid)}'
         )`;
 
         await sequelize.query(insertQuery, {
