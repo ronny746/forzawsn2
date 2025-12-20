@@ -11,6 +11,8 @@ appExpenseRouterV1.get('/get-expense-for-hr', jwtModule.verifyAccessToken, appEx
 appExpenseRouterV1.get('/exp-mst-mode', jwtModule.verifyAccessToken, appExpenseController.expMstMode);
 appExpenseRouterV1.get('/mst-con-mode', jwtModule.verifyAccessToken, appExpenseController.mstConMode);
 appExpenseRouterV1.get('/get-export-expense', jwtModule.verifyAccessToken, appExpenseController.getExportExpense);
+appExpenseRouterV1.get('/get-export-expense-hr', jwtModule.verifyAccessToken, appExpenseController.getExportExpenseHr);
+appExpenseRouterV1.get('/get-expense-amount', appExpenseController.getExpenseAmount);
 appExpenseRouterV1.get('/get-expense-by-id', jwtModule.verifyAccessToken, appExpenseController.getExpenseById);
 appExpenseRouterV1.post('/approve-disapprove-claim', jwtModule.verifyAccessToken, appExpenseController.approveDisapproveClaim);
 appExpenseRouterV1.post('/approve-disapprove-claim-by-hr', jwtModule.verifyAccessToken, appExpenseController.approveDisapproveClaimByHr);

@@ -129,28 +129,31 @@ const getVisitForAttendence = async (req: RequestType, res: Response): Promise<v
 
         // Step 1: Get today's visits
         const visitQuery = `
-      SELECT vs.VisitSummaryId,
-          CONCAT(vs.VisitFrom, ' -', vs.VisitTo) AS VisitLocation,
-          vs.VisitDate
-      FROM dbo.visitsummary vs
-      INNER JOIN dbo.visitdetails vd ON vd.VisitId = vs.VisitId
-      INNER JOIN dbo.employeedetails emp ON emp.EMPCode = vd.EmpCode
-      WHERE emp.EMPCode = :EMPCode
-        AND vs.approvedStatus = :approvedStatus
-        AND CAST(vs.VisitDate AS DATE) = CAST(GETDATE() AS DATE)
-      ORDER BY vs.VisitDate DESC
-    `;
+                SELECT 
+                vs.VisitSummaryId,
+                CONCAT(vs.VisitFrom, ' -', vs.VisitTo) AS VisitLocation,
+                vs.VisitDate
+        FROM dbo.visitsummary vs
+        LEFT JOIN dbo.visitdetails vd ON vd.VisitId = vs.VisitId
+        INNER JOIN dbo.employeedetails emp ON emp.EMPCode = vd.EmpCode
+        LEFT JOIN dbo.markattendance mka ON mka.VisitId = vs.VisitSummaryId
+        WHERE 
+            emp.EMPCode = :EMPCode
+            AND vs.approvedStatus = :approvedStatus
+            AND CONVERT(DATE, vs.VisitDate) = CONVERT(DATE, GETDATE())
+            ORDER BY 
+            mka.PresentTimeIn DESC`;
 
         const allVisits: any[] = await sequelize.query(visitQuery, {
             replacements: { EMPCode, approvedStatus: "Approved" },
             type: QueryTypes.SELECT,
         });
 
-        const finalVisits: any[] = [];
+        let finalVisits: any[] = [];
 
         // Step 2: Pick the latest created visit (if any)
         if (allVisits.length > 0) {
-            finalVisits.push(allVisits[0]); // latest visit based on VisitDate
+            finalVisits = allVisits; // latest visit based on VisitDate
         }
 
         // Step 3: Always add "Un-planned"
