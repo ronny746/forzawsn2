@@ -426,22 +426,29 @@ const expMstModeUpdateByDesc = async (req: RequestType, res: Response): Promise<
 const getExpenseAmount = async (req: RequestType, res: Response): Promise<void> => {
     try {
 
-        console.log(req.body.query);
-        const data = {
-            metro: {
-                sales_executive: 1800,
-                manager: 4000,
-                agm_and_above: 6000
-            },
-            no_metro: {
-                sales_executive: 1500,
-                manager: 3000,
-                agm_and_above: 5000
-            },
-            self_stay: {
-                sales_executive: 750,
-                manager: 1000,
-                agm_and_above: 1250
+        const DesigId = req?.payload?.DesigId;
+
+        let data = {};
+
+        if (Number(DesigId) === 4) {  // executive
+            data = {
+                metro: 1800,
+                no_metro: 1500,
+                self_stay: 750,
+            }
+        }
+        else if (Number(DesigId) === 3) {  // manager
+            data = {
+                metro: 4000,
+                no_metro: 3000,
+                self_stay: 1000
+            }
+        }
+        else {  // other
+            data = {
+                metro: 6000,
+                no_metro: 5000,
+                self_stay: 1250
             }
         }
 
@@ -464,7 +471,6 @@ const getExpenseAmount = async (req: RequestType, res: Response): Promise<void> 
         });
     }
 };
-
 const updateConvModeRate = async (req: RequestType, res: Response): Promise<void> => {
     try {
         const { ConvModeId, Rate } = req.body;
