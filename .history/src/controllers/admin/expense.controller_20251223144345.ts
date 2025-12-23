@@ -93,173 +93,49 @@ const addWatermarkToImage = async (
 };
 
 // Function to download image from URL and add watermark
+const processImageWithWatermark = async (
+    imageUrl: string,
+    watermarkData: WatermarkData
+): Promise<Buffer> => {
+    try {
+        let imageBuffer: Buffer;
 
+        console.log(imageUrl);
+
+        // Check if it's a URL or local file path
+        if (imageUrl.startsWith('https')) {
+            const response = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+            imageBuffer = Buffer.from(response.data);
+        } else {
+            const fs = require('fs');
+            imageBuffer = fs.readFileSync(imageUrl);
+        }
+
+        return await addWatermarkToImage(imageBuffer, watermarkData);
+    } catch (error) {
+        console.error('Error processing image:', error);
+        throw error;
+    }
+};
 
 // Main API function to generate PDF
-// const generateExpensePdfWithWatermark = async (
-//     req: RequestType,
-//     res: Response,
-//     next: NextFunction
-// ): Promise<void> => {
-//     try {
-//         const { empCode, startDate, endDate } = req.query;
-
-//         if (!empCode) {
-//             res.status(400).json({
-//                 error: true,
-//                 message: "Employee code is required"
-//             });
-//             return;
-//         }
-
-//         const expenseQuery = `
-//             SELECT 
-//                 ve.ExpenseReqId,
-//                 ve.EmpCode,
-//                 emp.FirstName,
-//                 emp.LastName,
-//                 ve.amount,
-//                 FORMAT(ve.createdAt AT TIME ZONE 'UTC' AT TIME ZONE 'India Standard Time', 'dd-MM-yyyy HH:mm') AS CreatedDate,
-//                 em.ExpModeDesc as ExpenseType,
-//                 cm.ConvModeDesc as ConveyanceMode,
-//                 vs.VisitFrom,
-//                 vs.VisitTo,
-//                 vs.VisitPurpose,
-//                 ve.Expense_document,
-//                 vs.VisitDate
-//             FROM dbo.visitexpense ve
-//             INNER JOIN dbo.employeedetails emp ON emp.EMPCode = ve.EmpCode
-//             LEFT JOIN dbo.mstexpmode em ON em.ExpModeId = ve.expensemodeid
-//             LEFT JOIN dbo.mstconvmode cm ON cm.ConvModeId = ve.ConvModeId
-//             INNER JOIN dbo.visitsummary vs ON vs.VisitSummaryId = ve.VisitSummaryId
-//             WHERE ve.EmpCode = :empCode 
-//             AND ve.isActive = 1
-//             ${startDate && endDate ? 'AND CAST(ve.createdAt AS DATE) BETWEEN :startDate AND :endDate' : ''}
-//             ORDER BY ve.createdAt DESC
-//         `;
-
-//         const expenses: any = await sequelize.query(expenseQuery, {
-//             replacements: {
-//                 empCode: empCode,
-//                 startDate: startDate,
-//                 endDate: endDate
-//             },
-//             type: QueryTypes.SELECT,
-//         });
-
-//         if (expenses.length === 0) {
-//             res.status(404).json({
-//                 error: true,
-//                 message: "No expenses found for this employee"
-//             });
-//             return;
-//         }
-
-//         // ❗ IMPORTANT — No default first page & no fixed A4
-//         const doc = new PDFDocument({
-//             autoFirstPage: false
-//         });
-
-//         res.setHeader('Content-Type', 'application/pdf');
-//         res.setHeader(
-//             'Content-Disposition',
-//             `attachment; filename="Expense_${empCode}_${new Date().getTime()}.pdf"`
-//         );
-
-//         doc.pipe(res);
-
-//         const BASE_URL = 'https://wsn3.workgateway.in/application_img/';
-//         let pageCount = 0;
-
-//         for (let expense of expenses) {
-//             if (!expense.Expense_document) continue;
-
-//             try {
-//                 const docs = JSON.parse(expense.Expense_document);
-
-//                 if (!Array.isArray(docs)) continue;
-
-//                 for (let doc_item of docs) {
-//                     if (!doc_item.file) continue;
-
-//                     const watermarkData: WatermarkData = {
-//                         createdDate: expense.CreatedDate,
-//                         expenseType: expense.ExpenseType || 'N/A',
-//                         conveyanceMode: expense.ConveyanceMode || 'N/A',
-//                         visitFrom: expense.VisitFrom,
-//                         visitTo: expense.VisitTo,
-//                         empCode: expense.EmpCode,
-//                         amount: expense.amount.toString()
-//                     };
-
-//                     const fileUrl = `${BASE_URL}${doc_item.file}`;
-
-//                     // ⬇️ Get final watermarked image
-//                     const watermarkedImageBuffer =
-//                         await processImageWithWatermark(fileUrl, watermarkData);
-
-//                     // ⬇️ Get image real size
-//                     const meta = await sharp(watermarkedImageBuffer).metadata();
-//                     const imgWidth = meta.width || 800;
-//                     const imgHeight = meta.height || 1000;
-
-//                     // ⬇️ Create page EXACT size as image
-//                     doc.addPage({
-//                         size: [imgWidth, imgHeight],
-//                         margin: 0
-//                     });
-
-//                     // ⬇️ Draw full image without scaling
-//                     doc.image(watermarkedImageBuffer, 0, 0, {
-//                         width: imgWidth,
-//                         height: imgHeight
-//                     });
-
-//                     pageCount++;
-//                 }
-//             } catch (err) {
-//                 console.log("Image block error:", err);
-//             }
-//         }
-
-//         doc.end();
-//     } catch (error: any) {
-//         console.error('Error generating PDF:', error);
-//         if (!res.headersSent) {
-//             res.status(500).json({
-//                 error: true,
-//                 message: 'Error generating PDF',
-//                 details: error.message
-//             });
-//         }
-//         next(error);
-//     }
-// };
-
-const fastAxios = axios.create({
-  timeout: 8000,
-  responseType: 'arraybuffer',
-  maxContentLength: 50 * 1024 * 1024,
-  httpAgent: new (require('http')).Agent({ keepAlive: true }),
-  httpsAgent: new (require('https')).Agent({ keepAlive: true }),
-});
-
 const generateExpensePdfWithWatermark = async (
-  req: RequestType,
-  res: Response,
-  next: NextFunction
+    req: RequestType,
+    res: Response,
+    next: NextFunction
 ): Promise<void> => {
-  try {
-    const { empCode, startDate, endDate } = req.query;
+    try {
+        const { empCode, startDate, endDate } = req.query;
 
-    if (!empCode) {
-       res.status(400).json({
-        error: true,
-        message: "Employee code is required"
-      });
-    }
+        if (!empCode) {
+            res.status(400).json({
+                error: true,
+                message: "Employee code is required"
+            });
+            return;
+        }
 
-    const expenseQuery = `
+        const expenseQuery = `
             SELECT 
                 ve.ExpenseReqId,
                 ve.EmpCode,
@@ -285,134 +161,103 @@ const generateExpensePdfWithWatermark = async (
             ORDER BY ve.createdAt DESC
         `;
 
-    const expenses: any = await sequelize.query(expenseQuery, {
-      replacements: { empCode, startDate, endDate },
-      type: QueryTypes.SELECT,
-    });
+        const expenses: any = await sequelize.query(expenseQuery, {
+            replacements: {
+                empCode: empCode,
+                startDate: startDate,
+                endDate: endDate
+            },
+            type: QueryTypes.SELECT,
+        });
 
-    if (!expenses.length) {
-       res.status(404).json({
-        error: true,
-        message: "No expenses found"
-      });
-    }
+        if (expenses.length === 0) {
+            res.status(404).json({
+                error: true,
+                message: "No expenses found for this employee"
+            });
+            return;
+        }
 
-    const BASE_URL = 'https://wsn3.workgateway.in/application_img/';
-    const allImages: { buffer: Buffer; width: number; height: number }[] = [];
+        // ❗ IMPORTANT — No default first page & no fixed A4
+        const doc = new PDFDocument({
+            autoFirstPage: false
+        });
 
-    // 🔥 PRELOAD & PROCESS EVERYTHING IN PARALLEL
-    const tasks: Promise<void>[] = [];
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader(
+            'Content-Disposition',
+            `attachment; filename="Expense_${empCode}_${new Date().getTime()}.pdf"`
+        );
 
-    for (const expense of expenses) {
-      if (!expense.Expense_document) continue;
+        doc.pipe(res);
 
-      let docs;
-      try {
-        docs = JSON.parse(expense.Expense_document);
-      } catch {
-        continue;
-      }
+        const BASE_URL = 'https://wsn3.workgateway.in/application_img/';
+        let pageCount = 0;
 
-      if (!Array.isArray(docs)) continue;
+        for (let expense of expenses) {
+            if (!expense.Expense_document) continue;
 
-      docs.forEach((doc_item: any) => {
-        if (!doc_item.file) return;
+            try {
+                const docs = JSON.parse(expense.Expense_document);
 
-        tasks.push((async () => {
-          try {
-            const fileUrl = `${BASE_URL}${doc_item.file}`;
+                if (!Array.isArray(docs)) continue;
 
-            const resImg = await fastAxios.get(fileUrl);
-            let buffer = Buffer.from(resImg.data);
+                for (let doc_item of docs) {
+                    if (!doc_item.file) continue;
 
-            // compress if huge (massive speed gain)
-            const meta = await sharp(buffer).metadata();
-            let width = meta.width || 800;
-            let height = meta.height || 1000;
+                    const watermarkData: WatermarkData = {
+                        createdDate: expense.CreatedDate,
+                        expenseType: expense.ExpenseType || 'N/A',
+                        conveyanceMode: expense.ConveyanceMode || 'N/A',
+                        visitFrom: expense.VisitFrom,
+                        visitTo: expense.VisitTo,
+                        empCode: expense.EmpCode,
+                        amount: expense.amount.toString()
+                    };
 
-            if (width > 1800) {
-              buffer = await sharp(buffer)
-                .resize(1800)
-                .jpeg({ quality: 85 })
-                .toBuffer();
+                    const fileUrl = `${BASE_URL}${doc_item.file}`;
 
-              const m = await sharp(buffer).metadata();
-              width = m.width!;
-              height = m.height!;
+                    // ⬇️ Get final watermarked image
+                    const watermarkedImageBuffer =
+                        await processImageWithWatermark(fileUrl, watermarkData);
+
+                    // ⬇️ Get image real size
+                    const meta = await sharp(watermarkedImageBuffer).metadata();
+                    const imgWidth = meta.width || 800;
+                    const imgHeight = meta.height || 1000;
+
+                    // ⬇️ Create page EXACT size as image
+                    doc.addPage({
+                        size: [imgWidth, imgHeight],
+                        margin: 0
+                    });
+
+                    // ⬇️ Draw full image without scaling
+                    doc.image(watermarkedImageBuffer, 0, 0, {
+                        width: imgWidth,
+                        height: imgHeight
+                    });
+
+                    pageCount++;
+                }
+            } catch (err) {
+                console.log("Image block error:", err);
             }
+        }
 
-            const watermarked = await addWatermarkToImage(buffer, {
-              createdDate: expense.CreatedDate,
-              expenseType: expense.ExpenseType || 'N/A',
-              conveyanceMode: expense.ConveyanceMode || 'N/A',
-              visitFrom: expense.VisitFrom,
-              visitTo: expense.VisitTo,
-              empCode: expense.EmpCode,
-              amount: expense.amount.toString()
+        doc.end();
+    } catch (error: any) {
+        console.error('Error generating PDF:', error);
+        if (!res.headersSent) {
+            res.status(500).json({
+                error: true,
+                message: 'Error generating PDF',
+                details: error.message
             });
-
-            const finalMeta = await sharp(watermarked).metadata();
-
-            allImages.push({
-              buffer: watermarked,
-              width: finalMeta.width || width,
-              height: finalMeta.height || height
-            });
-
-          } catch (err) {
-            console.log("Image failed, skipping", err);
-          }
-        })());
-      });
+        }
+        next(error);
     }
-
-    // wait all parallel jobs
-    await Promise.all(tasks);
-
-    if (!allImages.length) {
-       res.status(400).json({
-        error: true,
-        message: "No images available"
-      });
-    }
-
-    // PDF (sequential only, PDFKit requirement)
-    const doc = new PDFDocument({ autoFirstPage: false });
-
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="Expense_${empCode}_${Date.now()}.pdf"`
-    );
-
-    doc.pipe(res);
-
-    for (const img of allImages) {
-      doc.addPage({
-        size: [img.width, img.height],
-        margin: 0
-      });
-
-      doc.image(img.buffer, 0, 0, {
-        width: img.width,
-        height: img.height
-      });
-    }
-
-    doc.end();
-  } catch (err) {
-    console.error(err);
-    if (!res.headersSent) {
-      res.status(500).json({
-        error: true,
-        message: "Failed to generate PDF",
-        details: err
-      });
-    }
-    next(err);
-  }
 };
-
 
 
 

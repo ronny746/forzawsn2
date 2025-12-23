@@ -93,7 +93,30 @@ const addWatermarkToImage = async (
 };
 
 // Function to download image from URL and add watermark
+const processImageWithWatermark = async (
+    imageUrl: string,
+    watermarkData: WatermarkData
+): Promise<Buffer> => {
+    try {
+        let imageBuffer: Buffer;
 
+        console.log(imageUrl);
+
+        // Check if it's a URL or local file path
+        if (imageUrl.startsWith('https')) {
+            const response = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+            imageBuffer = Buffer.from(response.data);
+        } else {
+            const fs = require('fs');
+            imageBuffer = fs.readFileSync(imageUrl);
+        }
+
+        return await addWatermarkToImage(imageBuffer, watermarkData);
+    } catch (error) {
+        console.error('Error processing image:', error);
+        throw error;
+    }
+};
 
 // Main API function to generate PDF
 // const generateExpensePdfWithWatermark = async (
@@ -244,46 +267,18 @@ const fastAxios = axios.create({
   httpsAgent: new (require('https')).Agent({ keepAlive: true }),
 });
 
-const generateExpensePdfWithWatermark = async (
-  req: RequestType,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
+const generateExpensePdfWithWatermark = async (req, res, next) => {
   try {
     const { empCode, startDate, endDate } = req.query;
 
     if (!empCode) {
-       res.status(400).json({
+      return res.status(400).json({
         error: true,
         message: "Employee code is required"
       });
     }
 
-    const expenseQuery = `
-            SELECT 
-                ve.ExpenseReqId,
-                ve.EmpCode,
-                emp.FirstName,
-                emp.LastName,
-                ve.amount,
-                FORMAT(ve.createdAt AT TIME ZONE 'UTC' AT TIME ZONE 'India Standard Time', 'dd-MM-yyyy HH:mm') AS CreatedDate,
-                em.ExpModeDesc as ExpenseType,
-                cm.ConvModeDesc as ConveyanceMode,
-                vs.VisitFrom,
-                vs.VisitTo,
-                vs.VisitPurpose,
-                ve.Expense_document,
-                vs.VisitDate
-            FROM dbo.visitexpense ve
-            INNER JOIN dbo.employeedetails emp ON emp.EMPCode = ve.EmpCode
-            LEFT JOIN dbo.mstexpmode em ON em.ExpModeId = ve.expensemodeid
-            LEFT JOIN dbo.mstconvmode cm ON cm.ConvModeId = ve.ConvModeId
-            INNER JOIN dbo.visitsummary vs ON vs.VisitSummaryId = ve.VisitSummaryId
-            WHERE ve.EmpCode = :empCode 
-            AND ve.isActive = 1
-            ${startDate && endDate ? 'AND CAST(ve.createdAt AS DATE) BETWEEN :startDate AND :endDate' : ''}
-            ORDER BY ve.createdAt DESC
-        `;
+    const expenseQuery = `YOUR SAME QUERY HERE`;
 
     const expenses: any = await sequelize.query(expenseQuery, {
       replacements: { empCode, startDate, endDate },
@@ -291,7 +286,7 @@ const generateExpensePdfWithWatermark = async (
     });
 
     if (!expenses.length) {
-       res.status(404).json({
+      return res.status(404).json({
         error: true,
         message: "No expenses found"
       });
@@ -360,7 +355,7 @@ const generateExpensePdfWithWatermark = async (
             });
 
           } catch (err) {
-            console.log("Image failed, skipping", err);
+            console.log("Image failed, skipping", err?.message);
           }
         })());
       });
@@ -370,7 +365,7 @@ const generateExpensePdfWithWatermark = async (
     await Promise.all(tasks);
 
     if (!allImages.length) {
-       res.status(400).json({
+      return res.status(400).json({
         error: true,
         message: "No images available"
       });
@@ -406,7 +401,7 @@ const generateExpensePdfWithWatermark = async (
       res.status(500).json({
         error: true,
         message: "Failed to generate PDF",
-        details: err
+        details: err?.message
       });
     }
     next(err);

@@ -259,31 +259,7 @@ const generateExpensePdfWithWatermark = async (
       });
     }
 
-    const expenseQuery = `
-            SELECT 
-                ve.ExpenseReqId,
-                ve.EmpCode,
-                emp.FirstName,
-                emp.LastName,
-                ve.amount,
-                FORMAT(ve.createdAt AT TIME ZONE 'UTC' AT TIME ZONE 'India Standard Time', 'dd-MM-yyyy HH:mm') AS CreatedDate,
-                em.ExpModeDesc as ExpenseType,
-                cm.ConvModeDesc as ConveyanceMode,
-                vs.VisitFrom,
-                vs.VisitTo,
-                vs.VisitPurpose,
-                ve.Expense_document,
-                vs.VisitDate
-            FROM dbo.visitexpense ve
-            INNER JOIN dbo.employeedetails emp ON emp.EMPCode = ve.EmpCode
-            LEFT JOIN dbo.mstexpmode em ON em.ExpModeId = ve.expensemodeid
-            LEFT JOIN dbo.mstconvmode cm ON cm.ConvModeId = ve.ConvModeId
-            INNER JOIN dbo.visitsummary vs ON vs.VisitSummaryId = ve.VisitSummaryId
-            WHERE ve.EmpCode = :empCode 
-            AND ve.isActive = 1
-            ${startDate && endDate ? 'AND CAST(ve.createdAt AS DATE) BETWEEN :startDate AND :endDate' : ''}
-            ORDER BY ve.createdAt DESC
-        `;
+    const expenseQuery = `YOUR SAME QUERY HERE`;
 
     const expenses: any = await sequelize.query(expenseQuery, {
       replacements: { empCode, startDate, endDate },

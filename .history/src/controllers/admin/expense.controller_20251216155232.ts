@@ -8,18 +8,12 @@ import { NextFunction, Response } from 'express';
 //     joiAddUser
 // } from '../../helpers/joi/admin/user_details/index'
 import sequelize from '../../helpers/common/init_mysql';
-
-
-
-
+import { RequestType } from '../../helpers/shared/shared.type';
+import { NextFunction, Response } from 'express';
 
 import PDFDocument from 'pdfkit';
-import sharp from 'sharp';
+import { Readable } from 'stream';
 
-
-import axios from 'axios';
-
-import { RequestType } from '../../helpers/shared/shared.type';
 // import { convertToExcel, sentCreatedExpenseMail } from '../../helpers/service/email';
 import { sentRejectExpenseMail, sentRejectExpenseMailByFinance, sentRejectExpenseMailByHr } from '../../helpers/service/email';
 // import moment from 'moment';
@@ -29,401 +23,6 @@ const {
 const { QueryTypes } = require("sequelize");
 
 // Controller Methods
-interface WatermarkData {
-    createdDate: string;
-    expenseType: string;
-    conveyanceMode: string;
-    visitFrom: string;
-    visitTo: string;
-    empCode: string;
-    amount: string;
-}
-
-// Function to add watermark to image buffer
-const addWatermarkToImage = async (
-  imageBuffer: Buffer,
-  watermarkData: WatermarkData
-): Promise<Buffer> => {
-  try {
-    const metadata = await sharp(imageBuffer).metadata();
-    const width = metadata.width || 1000;
-    const height = metadata.height || 800;
-
-    const svg = `
-      <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
-        <style>
-          .text { fill:white; font-family: Arial; font-weight:bold; }
-        </style>
-
-        <!-- Transparent overlay (optional) -->
-        <rect width="${width}" height="180" fill="rgba(0,0,0,0.35)" />
-
-        <text x="50%" y="50" font-size="28" text-anchor="middle" class="text">
-          📅 ${watermarkData.createdDate}
-        </text>
-
-        <text x="50%" y="90" font-size="22" text-anchor="middle" class="text">
-          Type: ${watermarkData.expenseType} | Mode: ${watermarkData.conveyanceMode}
-        </text>
-
-        <text x="50%" y="130" font-size="20" text-anchor="middle" class="text">
-          ${watermarkData.visitFrom} → ${watermarkData.visitTo}
-        </text>
-
-        <text x="50%" y="170" font-size="20" text-anchor="middle" class="text">
-          Amount: ₹${watermarkData.amount}
-        </text>
-      </svg>
-    `;
-
-    return await sharp(imageBuffer)
-      .composite([
-        {
-          input: Buffer.from(svg),
-          left: 0,
-          top: 0,
-          blend: 'over'
-        }
-      ])
-      .toBuffer();
-  } catch (err) {
-    console.error('Watermark error:', err);
-    throw err;
-  }
-};
-
-// Function to download image from URL and add watermark
-
-
-// Main API function to generate PDF
-// const generateExpensePdfWithWatermark = async (
-//     req: RequestType,
-//     res: Response,
-//     next: NextFunction
-// ): Promise<void> => {
-//     try {
-//         const { empCode, startDate, endDate } = req.query;
-
-//         if (!empCode) {
-//             res.status(400).json({
-//                 error: true,
-//                 message: "Employee code is required"
-//             });
-//             return;
-//         }
-
-//         const expenseQuery = `
-//             SELECT 
-//                 ve.ExpenseReqId,
-//                 ve.EmpCode,
-//                 emp.FirstName,
-//                 emp.LastName,
-//                 ve.amount,
-//                 FORMAT(ve.createdAt AT TIME ZONE 'UTC' AT TIME ZONE 'India Standard Time', 'dd-MM-yyyy HH:mm') AS CreatedDate,
-//                 em.ExpModeDesc as ExpenseType,
-//                 cm.ConvModeDesc as ConveyanceMode,
-//                 vs.VisitFrom,
-//                 vs.VisitTo,
-//                 vs.VisitPurpose,
-//                 ve.Expense_document,
-//                 vs.VisitDate
-//             FROM dbo.visitexpense ve
-//             INNER JOIN dbo.employeedetails emp ON emp.EMPCode = ve.EmpCode
-//             LEFT JOIN dbo.mstexpmode em ON em.ExpModeId = ve.expensemodeid
-//             LEFT JOIN dbo.mstconvmode cm ON cm.ConvModeId = ve.ConvModeId
-//             INNER JOIN dbo.visitsummary vs ON vs.VisitSummaryId = ve.VisitSummaryId
-//             WHERE ve.EmpCode = :empCode 
-//             AND ve.isActive = 1
-//             ${startDate && endDate ? 'AND CAST(ve.createdAt AS DATE) BETWEEN :startDate AND :endDate' : ''}
-//             ORDER BY ve.createdAt DESC
-//         `;
-
-//         const expenses: any = await sequelize.query(expenseQuery, {
-//             replacements: {
-//                 empCode: empCode,
-//                 startDate: startDate,
-//                 endDate: endDate
-//             },
-//             type: QueryTypes.SELECT,
-//         });
-
-//         if (expenses.length === 0) {
-//             res.status(404).json({
-//                 error: true,
-//                 message: "No expenses found for this employee"
-//             });
-//             return;
-//         }
-
-//         // ❗ IMPORTANT — No default first page & no fixed A4
-//         const doc = new PDFDocument({
-//             autoFirstPage: false
-//         });
-
-//         res.setHeader('Content-Type', 'application/pdf');
-//         res.setHeader(
-//             'Content-Disposition',
-//             `attachment; filename="Expense_${empCode}_${new Date().getTime()}.pdf"`
-//         );
-
-//         doc.pipe(res);
-
-//         const BASE_URL = 'https://wsn3.workgateway.in/application_img/';
-//         let pageCount = 0;
-
-//         for (let expense of expenses) {
-//             if (!expense.Expense_document) continue;
-
-//             try {
-//                 const docs = JSON.parse(expense.Expense_document);
-
-//                 if (!Array.isArray(docs)) continue;
-
-//                 for (let doc_item of docs) {
-//                     if (!doc_item.file) continue;
-
-//                     const watermarkData: WatermarkData = {
-//                         createdDate: expense.CreatedDate,
-//                         expenseType: expense.ExpenseType || 'N/A',
-//                         conveyanceMode: expense.ConveyanceMode || 'N/A',
-//                         visitFrom: expense.VisitFrom,
-//                         visitTo: expense.VisitTo,
-//                         empCode: expense.EmpCode,
-//                         amount: expense.amount.toString()
-//                     };
-
-//                     const fileUrl = `${BASE_URL}${doc_item.file}`;
-
-//                     // ⬇️ Get final watermarked image
-//                     const watermarkedImageBuffer =
-//                         await processImageWithWatermark(fileUrl, watermarkData);
-
-//                     // ⬇️ Get image real size
-//                     const meta = await sharp(watermarkedImageBuffer).metadata();
-//                     const imgWidth = meta.width || 800;
-//                     const imgHeight = meta.height || 1000;
-
-//                     // ⬇️ Create page EXACT size as image
-//                     doc.addPage({
-//                         size: [imgWidth, imgHeight],
-//                         margin: 0
-//                     });
-
-//                     // ⬇️ Draw full image without scaling
-//                     doc.image(watermarkedImageBuffer, 0, 0, {
-//                         width: imgWidth,
-//                         height: imgHeight
-//                     });
-
-//                     pageCount++;
-//                 }
-//             } catch (err) {
-//                 console.log("Image block error:", err);
-//             }
-//         }
-
-//         doc.end();
-//     } catch (error: any) {
-//         console.error('Error generating PDF:', error);
-//         if (!res.headersSent) {
-//             res.status(500).json({
-//                 error: true,
-//                 message: 'Error generating PDF',
-//                 details: error.message
-//             });
-//         }
-//         next(error);
-//     }
-// };
-
-const fastAxios = axios.create({
-  timeout: 8000,
-  responseType: 'arraybuffer',
-  maxContentLength: 50 * 1024 * 1024,
-  httpAgent: new (require('http')).Agent({ keepAlive: true }),
-  httpsAgent: new (require('https')).Agent({ keepAlive: true }),
-});
-
-const generateExpensePdfWithWatermark = async (
-  req: RequestType,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
-  try {
-    const { empCode, startDate, endDate } = req.query;
-
-    if (!empCode) {
-       res.status(400).json({
-        error: true,
-        message: "Employee code is required"
-      });
-    }
-
-    const expenseQuery = `
-            SELECT 
-                ve.ExpenseReqId,
-                ve.EmpCode,
-                emp.FirstName,
-                emp.LastName,
-                ve.amount,
-                FORMAT(ve.createdAt AT TIME ZONE 'UTC' AT TIME ZONE 'India Standard Time', 'dd-MM-yyyy HH:mm') AS CreatedDate,
-                em.ExpModeDesc as ExpenseType,
-                cm.ConvModeDesc as ConveyanceMode,
-                vs.VisitFrom,
-                vs.VisitTo,
-                vs.VisitPurpose,
-                ve.Expense_document,
-                vs.VisitDate
-            FROM dbo.visitexpense ve
-            INNER JOIN dbo.employeedetails emp ON emp.EMPCode = ve.EmpCode
-            LEFT JOIN dbo.mstexpmode em ON em.ExpModeId = ve.expensemodeid
-            LEFT JOIN dbo.mstconvmode cm ON cm.ConvModeId = ve.ConvModeId
-            INNER JOIN dbo.visitsummary vs ON vs.VisitSummaryId = ve.VisitSummaryId
-            WHERE ve.EmpCode = :empCode 
-            AND ve.isActive = 1
-            ${startDate && endDate ? 'AND CAST(ve.createdAt AS DATE) BETWEEN :startDate AND :endDate' : ''}
-            ORDER BY ve.createdAt DESC
-        `;
-
-    const expenses: any = await sequelize.query(expenseQuery, {
-      replacements: { empCode, startDate, endDate },
-      type: QueryTypes.SELECT,
-    });
-
-    if (!expenses.length) {
-       res.status(404).json({
-        error: true,
-        message: "No expenses found"
-      });
-    }
-
-    const BASE_URL = 'https://wsn3.workgateway.in/application_img/';
-    const allImages: { buffer: Buffer; width: number; height: number }[] = [];
-
-    // 🔥 PRELOAD & PROCESS EVERYTHING IN PARALLEL
-    const tasks: Promise<void>[] = [];
-
-    for (const expense of expenses) {
-      if (!expense.Expense_document) continue;
-
-      let docs;
-      try {
-        docs = JSON.parse(expense.Expense_document);
-      } catch {
-        continue;
-      }
-
-      if (!Array.isArray(docs)) continue;
-
-      docs.forEach((doc_item: any) => {
-        if (!doc_item.file) return;
-
-        tasks.push((async () => {
-          try {
-            const fileUrl = `${BASE_URL}${doc_item.file}`;
-
-            const resImg = await fastAxios.get(fileUrl);
-            let buffer = Buffer.from(resImg.data);
-
-            // compress if huge (massive speed gain)
-            const meta = await sharp(buffer).metadata();
-            let width = meta.width || 800;
-            let height = meta.height || 1000;
-
-            if (width > 1800) {
-              buffer = await sharp(buffer)
-                .resize(1800)
-                .jpeg({ quality: 85 })
-                .toBuffer();
-
-              const m = await sharp(buffer).metadata();
-              width = m.width!;
-              height = m.height!;
-            }
-
-            const watermarked = await addWatermarkToImage(buffer, {
-              createdDate: expense.CreatedDate,
-              expenseType: expense.ExpenseType || 'N/A',
-              conveyanceMode: expense.ConveyanceMode || 'N/A',
-              visitFrom: expense.VisitFrom,
-              visitTo: expense.VisitTo,
-              empCode: expense.EmpCode,
-              amount: expense.amount.toString()
-            });
-
-            const finalMeta = await sharp(watermarked).metadata();
-
-            allImages.push({
-              buffer: watermarked,
-              width: finalMeta.width || width,
-              height: finalMeta.height || height
-            });
-
-          } catch (err) {
-            console.log("Image failed, skipping", err);
-          }
-        })());
-      });
-    }
-
-    // wait all parallel jobs
-    await Promise.all(tasks);
-
-    if (!allImages.length) {
-       res.status(400).json({
-        error: true,
-        message: "No images available"
-      });
-    }
-
-    // PDF (sequential only, PDFKit requirement)
-    const doc = new PDFDocument({ autoFirstPage: false });
-
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="Expense_${empCode}_${Date.now()}.pdf"`
-    );
-
-    doc.pipe(res);
-
-    for (const img of allImages) {
-      doc.addPage({
-        size: [img.width, img.height],
-        margin: 0
-      });
-
-      doc.image(img.buffer, 0, 0, {
-        width: img.width,
-        height: img.height
-      });
-    }
-
-    doc.end();
-  } catch (err) {
-    console.error(err);
-    if (!res.headersSent) {
-      res.status(500).json({
-        error: true,
-        message: "Failed to generate PDF",
-        details: err
-      });
-    }
-    next(err);
-  }
-};
-
-
-
-
-const shortExpenseId = (id: any) => {
-    let hash = 0;
-    for (let i = 0; i < id.length; i++) {
-        hash = (hash << 5) - hash + id.charCodeAt(i);
-        hash |= 0; // convert to 32-bit int
-    }
-    return `${"FORZA"}-${Math.abs(hash).toString(36).toUpperCase()}`; // base36 = short
-}
 
 const createExpense = async (req: RequestType, res: Response): Promise<void> => {
     try {
@@ -446,27 +45,14 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
         if (!VisitSummaryId) {
             res.status(401).json({
                 error: true,
-                message: "Visit is not present"
+                message: "Visit is not present" 
             });
             return;
         }
-        if (!Data[0].file && Number(ExpModeId) !== 9 && Number(ExpModeId) !== 7) {
+        if (!Data[0].file && Number(ExpModeId) !== 7) {
             res.status(401).json({
                 error: true,
-                message: "Image is required for this expense"
-            });
-            return;
-        }
-
-        let sum = 0;
-        for (let i = 0; i < Data.length; i++) {
-            sum += Number(Data[i].amount ? Data[i].amount : 0);
-        }
-
-        if (Data[0].file && (Number(sum) !== Number(Amount))) {
-            res.status(401).json({
-                error: true,
-                message: "Each amount of doc must be equal to Total expense"
+                message: "Image is required for this expense" 
             });
             return;
         }
@@ -474,7 +60,7 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
         // check if same visit present for same employee on same expense mod and same convense mod
         const checkAlreadyVisitExpenseModeQuery = `SELECT * from dbo.visitexpense where EmpCode = :EMPCode AND VisitId=:VisitSummaryId AND expensemodeid=:ExpModeId`;
         const checkAlreadyVisitExpenseMode: any = await sequelize.query(checkAlreadyVisitExpenseModeQuery, {
-            replacements: {
+            replacements: { 
                 EMPCode: req?.payload?.appUserId,
                 VisitSummaryId: VisitSummaryId,
                 ExpModeId,
@@ -482,19 +68,20 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
             type: QueryTypes.SELECT,
         });
         console.log(checkAlreadyVisitExpenseMode, "checkAlreadyVisitExpenseMode")
-        if (checkAlreadyVisitExpenseMode.length !== 0) {
+        if(checkAlreadyVisitExpenseMode.length !== 0) {
             res.status(401).json({
                 error: true,
-                message: "Expense is already created for same expense mod"
+                message: "Expense is already created for same expense mod" 
             });
             return;
         }
 
         const emailGetQuery = `SELECT (SELECT Email from dbo.employeedetails as iemp where iemp.EMPCode = emp.MgrEmployeeID) as managerEmail, (SELECT CONCAT(FirstName, ' ', LastName) AS Name from dbo.employeedetails as iemp where iemp.EMPCode = emp.MgrEmployeeID) as managerName FROM dbo.employeedetails as emp where emp.EMPCode = :EMPCode`;
-        await sequelize.query(emailGetQuery, {
+        const emailGetDate: any = await sequelize.query(emailGetQuery, {
             replacements: { EMPCode: req?.payload?.appUserId },
             type: QueryTypes.INSERT,
         });
+        console.log(emailGetDate, "emailGetDate")
 
         const firstQuery = 'INSERT INTO dbo.visitexpense ';
         const insertQuery = `${firstQuery} (
@@ -509,9 +96,7 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
             Expense_document,
             Rate,
             Reason,
-            Distance,
-            deviceType,
-            ExpenseId
+            Distance
         ) VALUES (
             '${uuid}',
             '${req?.payload?.appUserId}',
@@ -524,9 +109,7 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
             '${JSON.stringify(Data)}',
             '${Rate}',
             '${Reason}',
-            '${Distance}',
-            'web',
-            '${shortExpenseId(uuid)}'
+            '${Distance}'
         )`;
 
         await sequelize.query(insertQuery, {
@@ -534,37 +117,8 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
             type: QueryTypes.INSERT,
         });
 
-        const promises = Data.map(async (item: any) => {
-            if (!item.file) return; // skip if no file
-
-            const id = uuidv4();
-
-            const insertQuery = `
-                INSERT INTO dbo.expensedocs 
-                (ExpenseDocId, ExpenseReqId, Amount, imageName, isVerified, isActive, deviceType)
-                VALUES (:ExpenseDocId, :ExpenseReqId, :Amount, :imageName, :isVerified, :isActive, :deviceType)
-            `;
-
-            const params = {
-                ExpenseDocId: id,
-                ExpenseReqId: uuid,
-                Amount: item.amount || 0,
-                imageName: item.file,
-                isVerified: "InProgress",
-                isActive: 1,
-                deviceType: 'web'
-            };
-
-            return sequelize.query(insertQuery, {
-                replacements: params,
-                type: QueryTypes.INSERT,
-            });
-        });
-
-        // Execute all queries in parallel
-        await Promise.all(promises);
-
-        if (!Data[0].file && Number(ExpModeId) === 9 && Number(ExpModeId) === 7) {
+        for (let i = 0; i < Data.length; i++) {
+            if(Data[i].file) {
             const uuid1 = uuidv4();
             const firstQuery = 'INSERT INTO dbo.expensedocs';
             const insertQuery1 = `${firstQuery} (
@@ -573,22 +127,21 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
                 Amount,
                 imageName,
                 isVerified,
-                isActive,
-                deviceType
+                isActive
             ) VALUES (
                 '${uuid1}',
                 '${uuid}',
-                '${Amount ? Amount : 0}',
-                'temp',
+                '${Data[i].amount ? Data[i].amount : 0}',
+                '${Data[i].file}',
                 '${"InProgress"}',
-                '${1}',
-                'web'
+                '${1}'
             )`;
 
             await sequelize.query(insertQuery1, {
                 replacements: {},
                 type: QueryTypes.INSERT,
             });
+        }
         }
 
         const getExpenseQuery = `SELECT emp.EMPCode as EmpId, CONCAT(emp.FirstName, ' -', emp.LastName) AS Name, mem.ExpModeDesc as ExpenseType, ve.amount as Cost, FORMAT(ve.createdAt AT TIME ZONE 'UTC' AT TIME ZONE 'India Standard Time', 'dd-MM-yyyy') AS Date, vs.VisitFrom, vs.VisitTo, vs.VisitPurpose as Purpose FROM dbo.visitexpense ve INNER JOIN dbo.employeedetails emp on emp.EMPCode = ve.EmpCode INNER JOIN dbo.visitsummary vs on vs.VisitSummaryId = ve.VisitSummaryId INNER JOIN dbo.mstexpmode mem on mem.ExpModeId = ve.expensemodeid where ve.ExpenseReqId =:ExpenseReqId`;
@@ -597,6 +150,8 @@ const createExpense = async (req: RequestType, res: Response): Promise<void> => 
             replacements: { ExpenseReqId: uuid },
             type: QueryTypes.INSERT,
         });
+
+        console.log(getExpenseDetail[0], "expenseDetail");
 
         let newAttachment: any = getExpenseDetail[0];
         newAttachment.push({ EmpId: "", Name: "", Expense: "", Cost: "", Date: "", VisitFrom: "", VisitTo: "", Purpose: "" });
@@ -628,7 +183,7 @@ const getAllExpense = async (req: RequestType, res: Response, next: NextFunction
         const startDate: any = req.query.startDate;
         const endDate: any = req.query.endDate;
         let searchEMPCode: any = req.query.EMPCode || req?.payload?.appUserId;
-        if (req.query.EMPCode === "all") {
+        if(req.query.EMPCode === "all") {
             searchEMPCode = '';
         }
         console.log(searchEMPCode, startDate, endDate, "date==============>");
@@ -644,7 +199,7 @@ const getAllExpense = async (req: RequestType, res: Response, next: NextFunction
         }
         if (searchEMPCode) {
             filter_query += ` AND emp.EMPCode=:searchEMPCode`
-        }
+        } 
 
         let result: any = { count: 0, rows: [] };
 
@@ -775,7 +330,7 @@ const getAllExpenseForHr = async (req: RequestType, res: Response, next: NextFun
         const startDate: any = req.query.startDate;
         const endDate: any = req.query.endDate;
         let searchEMPCode: any = req.query.EMPCode || req?.payload?.appUserId;
-        if (req.query.EMPCode === "all") {
+        if(req.query.EMPCode === "all") {
             searchEMPCode = '';
         }
         console.log(searchEMPCode, startDate, endDate, "date==============>");
@@ -791,7 +346,7 @@ const getAllExpenseForHr = async (req: RequestType, res: Response, next: NextFun
         }
         if (searchEMPCode) {
             filter_query += ` AND emp.EMPCode=:searchEMPCode`
-        }
+        } 
 
         let result: any = { count: 0, rows: [] };
 
@@ -887,6 +442,7 @@ const getExportExpense = async (req: RequestType, res: Response, next: NextFunct
         let searchKey = req.query.searchKey;
         const startDate: any = req.query.startDate;
         const endDate: any = req.query.endDate;
+        console.log(startDate, endDate, "date==============>");
 
         if (!searchKey) searchKey = "";
         searchKey = "%" + searchKey + "%";
@@ -905,27 +461,11 @@ const getExportExpense = async (req: RequestType, res: Response, next: NextFunct
             query = `
             SELECT
                 emp.EMPCode as EmployeeId,
-                ve.ExpenseId as ExpenseId,
                 CONCAT(emp.FirstName, ' ', emp.LastName) as Name,
                 em.ExpModeDesc as ExpenseType,
                 ve.amount as Cost,
                 (SELECT CONCAT(emp.FirstName, ' ', emp.LastName) FROM dbo.employeedetails emp WHERE emp.EMPCode = ve.ApprovedById) as ApprovedByName,
-                (SELECT SUM(CAST(ed.Amount AS INT)) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType AND verificationStatusByHr = :verificationStatusByHr AND verificationStatusByFinance = :verificationStatusByFinance) as TotalApproveAmount,
-                (SELECT SUM(CAST(ed.Amount AS INT)) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType1 AND verificationStatusByHr = :verificationStatusByHr1 AND verificationStatusByFinance = :verificationStatusByFinance1) as TotalRejectAmount,
-                (SELECT SUM(CAST(ed.Amount AS INT)) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType2 AND verificationStatusByHr = :verificationStatusByHr2 AND verificationStatusByFinance = :verificationStatusByFinance2) as TotalPendingAmount,
-                (
-                SELECT 
-                    ed.ApprovedById AS StatusUpdateByManagerId,
-                    ed.isVerified AS StatusUpdateByManager,
-                    ed.StatusUpdatedByHrId AS StatusUpdateByHrId,
-                    ed.verificationStatusByHr AS StatusUpdateByHr,
-                    ed.ApprovedByFinanceId AS StatusUpdateByFinanceId,
-                    ed.verificationStatusByFinance AS StatusUpdateByFinance,
-                    ed.Amount
-                    FROM dbo.expensedocs ed
-                    WHERE ed.ExpenseReqId = ve.ExpenseReqId 
-                    FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
-                ) AS StatusUpdateData,
+                (SELECT SUM(CAST(ed.Amount AS INT)) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType) as TotalApproveAmount,
                 ve.ApprovedById,
                 FORMAT(ve.createdAt AT TIME ZONE 'UTC' AT TIME ZONE 'India Standard Time', 'dd-MM-yyyy') AS ExpenseDate, 
                 vs.VisitFrom,
@@ -950,27 +490,11 @@ const getExportExpense = async (req: RequestType, res: Response, next: NextFunct
             query = `
             SELECT 
                 emp.EMPCode as EmployeeId,
-                ve.ExpenseId as ExpenseId,
                 CONCAT(emp.FirstName, ' ', emp.LastName) as Name,
                 em.ExpModeDesc as ExpenseType,
-                ve.amount as TotalAmount,
+                ve.amount as Cost,
                 (SELECT CONCAT(emp.FirstName, ' ', emp.LastName) FROM dbo.employeedetails emp WHERE emp.EMPCode = ve.ApprovedById) as ApprovedByName,
-                (SELECT SUM(CAST(ed.Amount AS INT)) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType AND verificationStatusByHr = :verificationStatusByHr AND verificationStatusByFinance = :verificationStatusByFinance) as TotalApproveAmount,
-                (SELECT SUM(CAST(ed.Amount AS INT)) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType1 AND verificationStatusByHr = :verificationStatusByHr1 AND verificationStatusByFinance = :verificationStatusByFinance1) as TotalRejectAmount,
-                (SELECT SUM(CAST(ed.Amount AS INT)) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType2 AND verificationStatusByHr = :verificationStatusByHr2 AND verificationStatusByFinance = :verificationStatusByFinance2) as TotalPendingAmount,
-                (
-                SELECT 
-                    ed.ApprovedById AS StatusUpdateByManagerId,
-                    ed.isVerified AS StatusUpdateByManager,
-                    ed.StatusUpdatedByHrId AS StatusUpdateByHrId,
-                    ed.verificationStatusByHr AS StatusUpdateByHr,
-                    ed.ApprovedByFinanceId AS StatusUpdateByFinanceId,
-                    ed.verificationStatusByFinance AS StatusUpdateByFinance,
-                    ed.Amount
-                    FROM dbo.expensedocs ed
-                    WHERE ed.ExpenseReqId = ve.ExpenseReqId
-                    FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
-                ) AS StatusUpdateData,
+                (SELECT SUM(CAST(ed.Amount AS INT)) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType) as TotalApproveAmount,
                 ve.ApprovedById,
                 FORMAT(ve.createdAt AT TIME ZONE 'UTC' AT TIME ZONE 'India Standard Time', 'dd-MM-yyyy') AS ExpenseDate, 
                 vs.VisitFrom,
@@ -992,21 +516,16 @@ const getExportExpense = async (req: RequestType, res: Response, next: NextFunct
         `;
         }
 
+        // console.log('query', query);
+
+        // Execute the query
         result.rows = await sequelize.query(query, {
             replacements: {
                 searchKey: searchKey,
                 EMPCode: req?.payload?.appUserId,
                 startDate: startDate,
                 endDate: endDate,
-                verifyType: "Approved",
-                verificationStatusByHr: "Approved",
-                verificationStatusByFinance: "Approved",
-                verifyType1: "Rejected",
-                verificationStatusByHr1: "Rejected",
-                verificationStatusByFinance1: "Rejected",
-                verifyType2: "InProgress",
-                verificationStatusByHr2: "InProgress",
-                verificationStatusByFinance2: "InProgress"
+                verifyType: "Approved"
             },
             type: QueryTypes.SELECT,
         });
@@ -1016,197 +535,6 @@ const getExportExpense = async (req: RequestType, res: Response, next: NextFunct
         console.log(error);
         if (error?.isJoi === true) error.status = 422;
         next(error);
-    }
-};
-
-const getExportExpenseHr = async (req: RequestType, res: Response, next: NextFunction): Promise<void> => {
-    try {
-
-        const DesigId = req?.payload?.DesigId;
-        let searchKey = req.query.searchKey || '';
-        const startDate: any = req.query.startDate;
-        const endDate: any = req.query.endDate;
-
-        if (searchKey === "all") {
-            searchKey = '';
-        }
-
-        let filter_query = ``;
-
-        // Add date filtering if provided
-        if (startDate && endDate) {
-            filter_query = `AND CAST(ve.createdAt AS DATE) BETWEEN :startDate AND :endDate`
-        }
-
-        if (searchKey) {
-            filter_query += ` AND emp.EMPCode=:searchKey`
-        }
-
-        let result: any = { count: 0, rows: [] };
-
-        let query: string;
-        if (DesigId === '4') {
-            query = `
-            SELECT
-                emp.EMPCode as EmployeeId,
-                ve.ExpenseId as ExpenseId,
-                CONCAT(emp.FirstName, ' ', emp.LastName) as Name,
-                em.ExpModeDesc as ExpenseType,
-                ve.amount as Cost,
-                (SELECT CONCAT(emp.FirstName, ' ', emp.LastName) FROM dbo.employeedetails emp WHERE emp.EMPCode = ve.ApprovedById) as ApprovedByName,
-                (SELECT SUM(CAST(ed.Amount AS INT)) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType AND verificationStatusByHr = :verificationStatusByHr AND verificationStatusByFinance = :verificationStatusByFinance) as TotalApproveAmount,
-                (SELECT SUM(CAST(ed.Amount AS INT)) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType1 AND verificationStatusByHr = :verificationStatusByHr1 AND verificationStatusByFinance = :verificationStatusByFinance1) as TotalRejectAmount,
-                (SELECT SUM(CAST(ed.Amount AS INT)) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType2 AND verificationStatusByHr = :verificationStatusByHr2 AND verificationStatusByFinance = :verificationStatusByFinance2) as TotalPendingAmount,
-                (
-                SELECT 
-                    ed.ApprovedById AS StatusUpdateByManagerId,
-                    ed.isVerified AS StatusUpdateByManager,
-                    ed.StatusUpdatedByHrId AS StatusUpdateByHrId,
-                    ed.verificationStatusByHr AS StatusUpdateByHr,
-                    ed.ApprovedByFinanceId AS StatusUpdateByFinanceId,
-                    ed.verificationStatusByFinance AS StatusUpdateByFinance,
-                    ed.Amount
-                    FROM dbo.expensedocs ed
-                    WHERE ed.ExpenseReqId = ve.ExpenseReqId 
-                    FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
-                ) AS StatusUpdateData,
-                ve.ApprovedById,
-                FORMAT(ve.createdAt AT TIME ZONE 'UTC' AT TIME ZONE 'India Standard Time', 'dd-MM-yyyy') AS ExpenseDate, 
-                vs.VisitFrom,
-                FORMAT(vs.VisitDate AT TIME ZONE 'UTC' AT TIME ZONE 'India Standard Time', 'dd-MM-yyyy') AS VisitDate, 
-                vs.VisitTo,
-                vs.VisitPurpose as Purpose  
-            FROM 
-                dbo.visitexpense AS ve 
-                INNER JOIN dbo.visitsummary vs ON vs.VisitSummaryId = ve.VisitId 
-                INNER JOIN dbo.employeedetails emp ON emp.EMPCode = ve.EmpCode 
-                LEFT JOIN dbo.mstexpmode em ON em.ExpModeId = ve.expensemodeid
-                INNER JOIN dbo.mststatus sts ON sts.StatusId = ve.ExpenseStatusId 
-            WHERE 
-                ve.EmpCode = :EMPCode
-                AND ve.isActive = 1
-                ${filter_query}
-                order by ve.createdAt desc
-        `;
-        }
-        else {
-            query = `
-            SELECT 
-                emp.EMPCode as EmployeeId,
-                ve.ExpenseId as ExpenseId,
-                CONCAT(emp.FirstName, ' ', emp.LastName) as Name,
-                em.ExpModeDesc as ExpenseType,
-                ve.amount as TotalAmount,
-                (SELECT CONCAT(emp.FirstName, ' ', emp.LastName) FROM dbo.employeedetails emp WHERE emp.EMPCode = ve.ApprovedById) as ApprovedByName,
-                (SELECT SUM(CAST(ed.Amount AS INT)) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType AND verificationStatusByHr = :verificationStatusByHr AND verificationStatusByFinance = :verificationStatusByFinance) as TotalApproveAmount,
-                (SELECT SUM(CAST(ed.Amount AS INT)) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType1 AND verificationStatusByHr = :verificationStatusByHr1 AND verificationStatusByFinance = :verificationStatusByFinance1) as TotalRejectAmount,
-                (SELECT SUM(CAST(ed.Amount AS INT)) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType2 AND verificationStatusByHr = :verificationStatusByHr2 AND verificationStatusByFinance = :verificationStatusByFinance2) as TotalPendingAmount,
-                (
-                SELECT 
-                    ed.ApprovedById AS StatusUpdateByManagerId,
-                    ed.isVerified AS StatusUpdateByManager,
-                    ed.StatusUpdatedByHrId AS StatusUpdateByHrId,
-                    ed.verificationStatusByHr AS StatusUpdateByHr,
-                    ed.ApprovedByFinanceId AS StatusUpdateByFinanceId,
-                    ed.verificationStatusByFinance AS StatusUpdateByFinance,
-                    ed.Amount
-                    FROM dbo.expensedocs ed
-                    WHERE ed.ExpenseReqId = ve.ExpenseReqId
-                    FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
-                ) AS StatusUpdateData,
-                ve.ApprovedById,
-                FORMAT(ve.createdAt AT TIME ZONE 'UTC' AT TIME ZONE 'India Standard Time', 'dd-MM-yyyy') AS ExpenseDate, 
-                vs.VisitFrom,
-                FORMAT(vs.VisitDate AT TIME ZONE 'UTC' AT TIME ZONE 'India Standard Time', 'dd-MM-yyyy') AS VisitDate,
-                vs.VisitTo,
-                vs.VisitPurpose as Purpose
-            FROM 
-                dbo.visitexpense AS ve 
-                INNER JOIN dbo.visitsummary vs ON vs.VisitSummaryId = ve.VisitId 
-                INNER JOIN dbo.employeedetails emp ON emp.EMPCode = ve.EmpCode 
-                LEFT JOIN dbo.mstexpmode em ON em.ExpModeId = ve.expensemodeid 
-                INNER JOIN dbo.mststatus sts ON sts.StatusId = ve.ExpenseStatusId 
-            WHERE
-                (emp.MgrEmployeeID = :EMPCode OR ve.EmpCode = :EMPCode) 
-                AND ve.isActive = 1
-                ${filter_query}
-                order by ve.createdAt desc
-        `;
-        }
-
-        result.rows = await sequelize.query(query, {
-            replacements: {
-                searchKey: searchKey,
-                EMPCode: req?.payload?.appUserId,
-                startDate: startDate,
-                endDate: endDate,
-                verifyType: "Approved",
-                verificationStatusByHr: "Approved",
-                verificationStatusByFinance: "Approved",
-                verifyType1: "Rejected",
-                verificationStatusByHr1: "Rejected",
-                verificationStatusByFinance1: "Rejected",
-                verifyType2: "InProgress",
-                verificationStatusByHr2: "InProgress",
-                verificationStatusByFinance2: "InProgress"
-            },
-            type: QueryTypes.SELECT,
-        });
-
-        res.status(200).send({ data: result });
-    } catch (error: any) {
-        console.log(error);
-        if (error?.isJoi === true) error.status = 422;
-        next(error);
-    }
-};
-
-const getExpenseAmount = async (req: RequestType, res: Response): Promise<void> => {
-    try {
-
-        const DesigId = req?.payload?.DesigId;
-
-        let data = {};
-
-        if (Number(DesigId) === 4) {  // executive
-            data = {
-                metro: 1800,
-                no_metro: 1500,
-                self_stay: 750,
-            }
-        }
-        else if (Number(DesigId) === 3) {  // manager
-            data = {
-                metro: 4000,
-                no_metro: 3000,
-                self_stay: 1000
-            }
-        }
-        else {  // other
-            data = {
-                metro: 6000,
-                no_metro: 5000,
-                self_stay: 1250
-            }
-        }
-
-        // ✅ Success response
-        res.status(200).json({
-            ResponseMessage: "Expense Amount Get Successfully",
-            Status: true,
-            data: data,
-            ResponseCode: "OK",
-            confirmationbox: true
-        });
-
-    } catch (error: any) {
-        console.log("Error in expense amount", error);
-        res.status(500).json({
-            ResponseMessage: "Internal Server Error",
-            Status: false,
-            ResponseCode: "SERVER_ERROR",
-            confirmationbox: false
-        });
     }
 };
 
@@ -1306,7 +634,7 @@ const approveDisapproveClaim = async (req: RequestType, res: Response, next: Nex
 
 
         // if (!isApprove) {
-        sentRejectExpenseMail(docData1?.Email, docData1?.Amount, docData1?.FirstName + ' ' + docData1?.LastName, docData1.VisitFrom, docData1?.VisitTo, isApprove, ExpenseReqId);
+            sentRejectExpenseMail(docData1?.Email, docData1?.Amount, docData1?.FirstName + ' ' + docData1?.LastName, docData1.VisitFrom, docData1?.VisitTo, isApprove);
         // }
 
         if (res.headersSent === false) {
@@ -1334,7 +662,7 @@ const approveDisapproveClaimByHr = async (req: RequestType, res: Response, next:
         const results: any = await sequelize.query(expenseUpdateQuery, {
             replacements: {
                 ExpenseStatusChangeByHr: 1,
-                ExpenseReqId: ExpenseReqId,
+                ExpenseReqId: ExpenseReqId,            
             },
             type: QueryTypes.UPDATE,
         });
@@ -1364,7 +692,7 @@ const approveDisapproveClaimByHr = async (req: RequestType, res: Response, next:
 
 
         // if (!isApprove) {
-        sentRejectExpenseMailByHr(docData1?.Email, docData1?.Amount, docData1?.FirstName + ' ' + docData1?.LastName, docData1.VisitFrom, docData1?.VisitTo, isHold, ExpenseReqId);
+            sentRejectExpenseMailByHr(docData1?.Email, docData1?.Amount, docData1?.FirstName + ' ' + docData1?.LastName, docData1.VisitFrom, docData1?.VisitTo, isHold);
         // }
 
         if (res.headersSent === false) {
@@ -1422,7 +750,7 @@ const approveDisapproveClaimByFinance = async (req: RequestType, res: Response, 
 
 
         // if (!isApprove) {
-        sentRejectExpenseMailByFinance(docData1?.Email, docData1?.Amount, docData1?.FirstName + ' ' + docData1?.LastName, docData1.VisitFrom, docData1?.VisitTo, isHold, ExpenseReqId);
+            sentRejectExpenseMailByFinance(docData1?.Email, docData1?.Amount, docData1?.FirstName + ' ' + docData1?.LastName, docData1.VisitFrom, docData1?.VisitTo, isHold);
         // }
 
         if (res.headersSent === false) {
@@ -1601,13 +929,13 @@ const uploadExpenseDoc = async (req: RequestType, res: Response): Promise<void> 
     }
 };
 
+
+
 // Export Methods
 export {
     getAllExpense,
     getAllExpenseForHr,
     getExportExpense,
-    getExportExpenseHr,
-    getExpenseAmount,
     approveDisapproveClaim,
     getExpenseById,
     expMstMode,
@@ -1616,6 +944,5 @@ export {
     uploadExpenseDoc,
     updateConvModeRate,
     approveDisapproveClaimByHr,
-    approveDisapproveClaimByFinance,
-    generateExpensePdfWithWatermark
+    approveDisapproveClaimByFinance
 };

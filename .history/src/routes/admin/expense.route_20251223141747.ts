@@ -18,6 +18,6 @@ appExpenseRouterV1.post('/approve-disapprove-claim', jwtModule.verifyAccessToken
 appExpenseRouterV1.post('/approve-disapprove-claim-by-hr', jwtModule.verifyAccessToken, appExpenseController.approveDisapproveClaimByHr);
 appExpenseRouterV1.post('/approve-disapprove-claim-by-finance', jwtModule.verifyAccessToken, appExpenseController.approveDisapproveClaimByFinance);
 appExpenseRouterV1.post('/upload-expense-doc', jwtModule.verifyAccessToken, upload0.single('file'), appExpenseController.uploadExpenseDoc);
-appExpenseRouterV1.get('/pdf-with-watermark', appExpenseController.generateExpensePdfWithWatermark);
+appExpenseRouterV1.get('/api/expense/pdf-with-watermark', appExpenseController.generateExpensePdfWithWatermark);
 
 export { appExpenseRouterV1 };
