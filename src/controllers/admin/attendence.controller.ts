@@ -69,7 +69,6 @@ const getVisitForAttendence = async (req: RequestType, res: Response): Promise<v
             replacements: replacements,
             type: QueryTypes.SELECT,
         });
-        console.log(results, "results");
         res.status(200).json({ data: results });
     } catch (error: any) {
         console.log(error)
@@ -345,7 +344,7 @@ const markAttendence = async (req: RequestType, res: Response): Promise<void> =>
                 replacements: { EMPCode: req?.payload?.appUserId },
                 type: QueryTypes.SELECT,
             });
-            if(checkInExistData.length !== 0) {
+            if (checkInExistData.length !== 0) {
                 res.status(500).send({
                     error: true,
                     data: {
@@ -487,14 +486,14 @@ const markAttendence = async (req: RequestType, res: Response): Promise<void> =>
 
             const distance = haversineDistance(checkAttendeceExist[0].Lat, checkAttendeceExist[0].Long, Latitude, Longitude) || 0;
             // console.log(distance, "distance");
-            
+
             const updateQuery = 'UPDATE dbo.markattendance SET AttendanceType = :AttendanceType, PresentTimeOut=:PresentTimeOut, CheckOut=:CheckOut, CheckOutAddress=:CheckOutAddress, CheckOutAddressImage=:CheckOutAddressImage, CheckOutLat=:CheckOutLat, CheckOutLong=:CheckOutLong, Distance=:distance WHERE VisitId = :VisitSummaryId';
             const results: any = await sequelize.query(updateQuery, {
-                replacements: { 
-                    VisitSummaryId: VisitSummaryId, 
-                    PresentTimeOut: date.toISOString().slice(0, 19).replace('T', ' '), 
-                    CheckOut: 1, AttendanceType: "Out", 
-                    CheckOutAddress: visit_address, 
+                replacements: {
+                    VisitSummaryId: VisitSummaryId,
+                    PresentTimeOut: date.toISOString().slice(0, 19).replace('T', ' '),
+                    CheckOut: 1, AttendanceType: "Out",
+                    CheckOutAddress: visit_address,
                     CheckOutAddressImage: place_image,
                     CheckOutLat: Latitude,
                     CheckOutLong: Longitude,
@@ -528,7 +527,7 @@ const getReport = async (req: RequestType, res: Response): Promise<void> => {
     try {
         const { startDate, endDate, pageIndex = 0, pageSize = 5, searchKey = '' } = req.query;
         let searchEMPCode = req.query.searchEMPCode || req?.payload?.appUserId;
-        if(req.query.searchEMPCode === "all") {
+        if (req.query.searchEMPCode === "all") {
             searchEMPCode = '';
         }
 
