@@ -1357,7 +1357,7 @@ const generateExpensePdfWithWatermark = async (
                         const fileUrl = `${BASE_URL}${doc_item.file}`;
 
                         const resImg = await fastAxios.get(fileUrl);
-                        let buffer = Buffer.from(resImg.data);
+                        let buffer: Buffer = Buffer.from(resImg.data);
 
                         // compress if huge (massive speed gain)
                         const meta = await sharp(buffer).metadata();
