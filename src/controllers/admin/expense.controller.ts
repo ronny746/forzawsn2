@@ -1294,30 +1294,49 @@ const generateExpensePdfWithWatermark = async (
         }
 
         const expenseQuery = `
-            SELECT 
-                ve.ExpenseReqId,
-                ve.EmpCode,
-                emp.FirstName,
-                emp.LastName,
-                ve.amount,
-                FORMAT(ve.createdAt AT TIME ZONE 'UTC' AT TIME ZONE 'India Standard Time', 'dd-MM-yyyy HH:mm') AS CreatedDate,
-                em.ExpModeDesc as ExpenseType,
-                cm.ConvModeDesc as ConveyanceMode,
-                vs.VisitFrom,
-                vs.VisitTo,
-                vs.VisitPurpose,
-                ve.Expense_document,
-                vs.VisitDate
-            FROM dbo.visitexpense ve
-            INNER JOIN dbo.employeedetails emp ON emp.EMPCode = ve.EmpCode
-            LEFT JOIN dbo.mstexpmode em ON em.ExpModeId = ve.expensemodeid
-            LEFT JOIN dbo.mstconvmode cm ON cm.ConvModeId = ve.ConvModeId
-            INNER JOIN dbo.visitsummary vs ON vs.VisitSummaryId = ve.VisitSummaryId
-            WHERE ve.EmpCode = :empCode 
-            AND ve.isActive = 1
-            ${startDate && endDate ? 'AND CAST(ve.createdAt AS DATE) BETWEEN :startDate AND :endDate' : ''}
-            ORDER BY ve.createdAt DESC
-        `;
+    SELECT 
+        ve.ExpenseReqId,
+        ve.EmpCode,
+        emp.FirstName,
+        emp.LastName,
+        ve.amount,
+        FORMAT(
+            ve.createdAt AT TIME ZONE 'UTC' 
+            AT TIME ZONE 'India Standard Time',
+            'dd-MM-yyyy HH:mm'
+        ) AS CreatedDate,
+        em.ExpModeDesc AS ExpenseType,
+        cm.ConvModeDesc AS ConveyanceMode,
+        vs.VisitFrom,
+        vs.VisitTo,
+        vs.VisitPurpose,
+        ve.Expense_document,
+        vs.VisitDate
+    FROM dbo.visitexpense ve
+    INNER JOIN dbo.employeedetails emp 
+        ON emp.EMPCode = ve.EmpCode
+
+    -- 🔴 SAFE CAST (prevents 'null' → smallint error)
+    LEFT JOIN dbo.mstexpmode em 
+        ON em.ExpModeId = TRY_CONVERT(SMALLINT, ve.expensemodeid)
+
+    LEFT JOIN dbo.mstconvmode cm 
+        ON cm.ConvModeId = TRY_CONVERT(SMALLINT, ve.ConvModeId)
+
+    INNER JOIN dbo.visitsummary vs 
+        ON vs.VisitSummaryId = ve.VisitSummaryId
+
+    WHERE ve.EmpCode = :empCode
+      AND ve.isActive = 1
+      ${startDate && endDate
+                ? `
+            AND ve.createdAt >= :startDate
+            AND ve.createdAt < DATEADD(day, 1, :endDate)
+          `
+                : ''
+            }
+    ORDER BY ve.createdAt DESC
+`;
 
         const expenses: any = await sequelize.query(expenseQuery, {
             replacements: { empCode, startDate, endDate },
@@ -1325,7 +1344,7 @@ const generateExpensePdfWithWatermark = async (
         });
 
         if (!expenses.length) {
-            res.status(404).json({
+            res.status(400).json({
                 error: true,
                 message: "No expenses found"
             });
