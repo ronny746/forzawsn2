@@ -2279,7 +2279,6 @@ export {
     uploadExpenseDoc,
     updateConvModeRate,
     approveDisapproveClaimByHr,
-    bulkHoldReleaseExpensesByHr,
     approveDisapproveClaimByFinance,
     generateExpensePdfWithWatermark,
     generateDetailedExpenseReport

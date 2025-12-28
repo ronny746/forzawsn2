@@ -1419,7 +1419,7 @@ const bulkHoldReleaseExpensesByHr = async (
                     doc.VisitTo,
                     isHold, // true = Hold, false = Release
                     doc.ExpenseReqId,
-                   
+                    isHold ? holdReason : null
                 ).catch((err: any) => {
                     console.log("Email sending failed:", err);
                 })
@@ -2279,7 +2279,6 @@ export {
     uploadExpenseDoc,
     updateConvModeRate,
     approveDisapproveClaimByHr,
-    bulkHoldReleaseExpensesByHr,
     approveDisapproveClaimByFinance,
     generateExpensePdfWithWatermark,
     generateDetailedExpenseReport

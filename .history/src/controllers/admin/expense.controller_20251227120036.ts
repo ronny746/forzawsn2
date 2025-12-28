@@ -932,263 +932,6 @@ const approveDisapproveClaim = async (req: RequestType, res: Response, next: Nex
     }
 };
 
-
-interface BulkApproveByIdsRequest {
-    expenseReqIds: string[]; // Array of ExpenseReqId
-    isApprove: boolean; // true = Approve, false = Reject
-    rejectReason?: string; // Required if isApprove = false
-}
-
-interface BulkApproveByIdsResult {
-    totalExpenses: number;
-    approvedCount: number;
-    rejectedCount: number;
-    failedCount: number;
-    approvalDetails: Array<{
-        ExpenseReqId: string;
-        EmployeeName: string;
-        EMPCode: string;
-        DocumentCount: number;
-        Amount: number;
-        Status: 'Success' | 'Failed';
-        Message: string;
-    }>;
-}
-
-const bulkApproveExpensesByIds = async (
-    req: RequestType,
-    res: Response,
-    next: NextFunction
-): Promise<void> => {
-    try {
-        const { expenseReqIds, isApprove, rejectReason } = req.body as BulkApproveByIdsRequest;
-        const managerId = req?.payload?.appUserId;
-
-        // Validate required fields
-        if (!expenseReqIds || !Array.isArray(expenseReqIds) || expenseReqIds.length === 0) {
-            res.status(400).json({
-                error: true,
-                message: "expenseReqIds array is required and must contain at least one ID"
-            });
-            return;
-        }
-
-        if (isApprove === undefined) {
-            res.status(400).json({
-                error: true,
-                message: "isApprove is required"
-            });
-            return;
-        }
-
-        // If rejecting, reason is required
-        if (!isApprove && !rejectReason) {
-            res.status(400).json({
-                error: true,
-                message: "rejectReason is required when rejecting expenses"
-            });
-            return;
-        }
-
-        // Get expense details for all provided IDs
-        const placeholders = expenseReqIds.map((_, i) => `:id${i}`).join(',');
-        const queryReplacements: any = { managerId };
-        expenseReqIds.forEach((id: string, i: number) => {
-            queryReplacements[`id${i}`] = id;
-        });
-
-        const getExpensesQuery = `
-            SELECT 
-                ve.ExpenseReqId,
-                ve.EmpCode,
-                CONCAT(emp.FirstName, ' ', emp.LastName) as EmployeeName,
-                ve.amount as TotalAmount,
-                sts.Description as CurrentStatus,
-                (SELECT COUNT(*) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId) as DocumentCount
-            FROM dbo.visitexpense ve
-            INNER JOIN dbo.employeedetails emp ON emp.EMPCode = ve.EmpCode
-            INNER JOIN dbo.mststatus sts ON sts.StatusId = ve.ExpenseStatusId
-            WHERE ve.ExpenseReqId IN (${placeholders})
-            AND ve.isActive = 1
-        `;
-
-        const expenses: any = await sequelize.query(getExpensesQuery, {
-            replacements: queryReplacements,
-            type: QueryTypes.SELECT,
-        });
-
-        if (!expenses.length) {
-            res.status(400).json({
-                error: true,
-                message: "No expenses found for the provided IDs"
-            });
-            return;
-        }
-
-        // Get all documents for all expenses in ONE query
-        const allDocsQuery = `
-            SELECT 
-                ed.ExpenseDocId,
-                ed.ExpenseReqId,
-                ed.Amount,
-                emp.Email,
-                emp.FirstName,
-                emp.LastName,
-                vs.VisitFrom,
-                vs.VisitTo
-            FROM dbo.expensedocs ed
-            INNER JOIN dbo.visitexpense ve ON ve.ExpenseReqId = ed.ExpenseReqId
-            INNER JOIN dbo.employeedetails emp ON emp.EMPCode = ve.EmpCode
-            INNER JOIN dbo.visitsummary vs ON vs.VisitSummaryId = ve.VisitSummaryId
-            WHERE ed.ExpenseReqId IN (${placeholders})
-        `;
-
-        const allDocs: any = await sequelize.query(allDocsQuery, {
-            replacements: queryReplacements,
-            type: QueryTypes.SELECT,
-        });
-
-        // Map documents by ExpenseReqId
-        const docsMap = new Map<string, any[]>();
-        allDocs.forEach((doc: any) => {
-            if (!docsMap.has(doc.ExpenseReqId)) {
-                docsMap.set(doc.ExpenseReqId, []);
-            }
-            docsMap.get(doc.ExpenseReqId)!.push(doc);
-        });
-
-        // Prepare bulk update queries
-        const expenseIdsToUpdate = expenseReqIds.map((id: string) => `'${id}'`).join(',');
-
-        // Bulk update visitexpense
-        const bulkUpdateExpenseQuery = `
-            UPDATE dbo.visitexpense 
-            SET 
-                ExpenseStatusId = :ExpenseStatusId,
-                ApprovedById = :ApprovedById,
-                reject_reason = :reject_reason
-            WHERE ExpenseReqId IN (${expenseIdsToUpdate})
-        `;
-
-        await sequelize.query(bulkUpdateExpenseQuery, {
-            replacements: {
-                ExpenseStatusId: isApprove ? "2" : "3",
-                ApprovedById: managerId,
-                reject_reason: rejectReason || null
-            },
-            type: QueryTypes.UPDATE,
-        });
-
-        // Bulk update expensedocs
-        if (allDocs.length > 0) {
-            const docIdsToUpdate = allDocs.map((d: any) => `'${d.ExpenseDocId}'`).join(',');
-            const bulkUpdateDocsQuery = `
-                UPDATE dbo.expensedocs 
-                SET 
-                    isVerified = :isVerified,
-                    ApprovedById = :ApprovedById,
-                    reject_reason = :reject_reason
-                WHERE ExpenseDocId IN (${docIdsToUpdate})
-            `;
-
-            await sequelize.query(bulkUpdateDocsQuery, {
-                replacements: {
-                    isVerified: isApprove ? "Approved" : "Rejected",
-                    ApprovedById: managerId,
-                    reject_reason: rejectReason || null
-                },
-                type: QueryTypes.UPDATE,
-            });
-        }
-
-        // Send emails in parallel
-        const emailPromises: Promise<any>[] = [];
-        allDocs.forEach((doc: any) => {
-            emailPromises.push(
-                sentRejectExpenseMail(
-                    doc.Email,
-                    doc.Amount,
-                    `${doc.FirstName} ${doc.LastName}`,
-                    doc.VisitFrom,
-                    doc.VisitTo,
-                    isApprove,
-                    doc.ExpenseReqId,
-                    
-                ).catch((err: any) => {
-                    console.log("Email sending failed:", err);
-                })
-            );
-        });
-
-        // Send emails in background (don't wait for response)
-        if (emailPromises.length > 0) {
-            Promise.all(emailPromises).catch((err) => {
-                console.log("Some emails failed:", err);
-            });
-        }
-
-        // Build response
-        const approvalDetails: BulkApproveByIdsResult['approvalDetails'] = [];
-        let approvedCount = 0;
-        let rejectedCount = 0;
-        let failedCount = 0;
-
-        for (const expense of expenses) {
-            try {
-                const docs = docsMap.get(expense.ExpenseReqId) || [];
-                const statusText = isApprove ? 'approved' : 'rejected';
-
-                approvalDetails.push({
-                    ExpenseReqId: expense.ExpenseReqId,
-                    EmployeeName: expense.EmployeeName,
-                    EMPCode: expense.EmpCode,
-                    DocumentCount: docs.length,
-                    Amount: expense.TotalAmount,
-                    Status: 'Success',
-                    Message: `Expense ${statusText} successfully (${docs.length} documents)`
-                });
-
-                if (isApprove) {
-                    approvedCount++;
-                } else {
-                    rejectedCount++;
-                }
-            } catch (expenseError: any) {
-                console.log("Error processing expense:", expenseError);
-                failedCount++;
-                approvalDetails.push({
-                    ExpenseReqId: expense.ExpenseReqId,
-                    EmployeeName: expense.EmployeeName,
-                    EMPCode: expense.EmpCode,
-                    DocumentCount: 0,
-                    Amount: expense.TotalAmount,
-                    Status: 'Failed',
-                    Message: expenseError.message || 'Failed to process expense'
-                });
-            }
-        }
-
-        const result: BulkApproveByIdsResult = {
-            totalExpenses: expenses.length,
-            approvedCount,
-            rejectedCount,
-            failedCount,
-            approvalDetails
-        };
-
-        res.status(200).json({
-            error: false,
-            data: result,
-            message: `Bulk approval completed: ${approvedCount + rejectedCount}/${expenses.length} expenses processed`
-        });
-
-    } catch (error: any) {
-        console.log(error, "Bulk Approve By IDs Error");
-        if (error?.isJoi === true) error.status = 422;
-        next(error);
-    }
-};
-
 const approveDisapproveClaimByHr = async (req: RequestType, res: Response, next: NextFunction): Promise<void> => {
     try {
         const { ExpenseReqId, isHold, holdReason, ExpenseDocId } = req.body;
@@ -1246,255 +989,6 @@ const approveDisapproveClaimByHr = async (req: RequestType, res: Response, next:
         next(error);
     }
 };
-
-interface BulkHrHoldReleaseRequest {
-    expenseReqIds: string[]; // Array of ExpenseReqId
-    isHold: boolean; // true = Hold, false = Release
-    holdReason?: string; // Required if isHold = true
-}
-
-interface BulkHrHoldReleaseResult {
-    totalExpenses: number;
-    holdCount: number;
-    releaseCount: number;
-    failedCount: number;
-    approvalDetails: Array<{
-        ExpenseReqId: string;
-        EmployeeName: string;
-        EMPCode: string;
-        DocumentCount: number;
-        Amount: number;
-        Status: 'Success' | 'Failed';
-        Message: string;
-    }>;
-}
-
-const bulkHoldReleaseExpensesByHr = async (
-    req: RequestType,
-    res: Response,
-    next: NextFunction
-): Promise<void> => {
-    try {
-        const { expenseReqIds, isHold, holdReason } = req.body as BulkHrHoldReleaseRequest;
-        const hrUserId = req?.payload?.appUserId;
-
-        // Validate required fields
-        if (!expenseReqIds || !Array.isArray(expenseReqIds) || expenseReqIds.length === 0) {
-            res.status(400).json({
-                error: true,
-                message: "expenseReqIds array is required and must contain at least one ID"
-            });
-            return;
-        }
-
-        if (isHold === undefined) {
-            res.status(400).json({
-                error: true,
-                message: "isHold is required"
-            });
-            return;
-        }
-
-        // If holding, reason is required
-        if (isHold && !holdReason) {
-            res.status(400).json({
-                error: true,
-                message: "holdReason is required when holding expenses"
-            });
-            return;
-        }
-
-        // Get expense details for all provided IDs
-        const placeholders = expenseReqIds.map((_, i) => `:id${i}`).join(',');
-        const queryReplacements: any = { hrUserId };
-        expenseReqIds.forEach((id: string, i: number) => {
-            queryReplacements[`id${i}`] = id;
-        });
-
-        const getExpensesQuery = `
-            SELECT 
-                ve.ExpenseReqId,
-                ve.EmpCode,
-                CONCAT(emp.FirstName, ' ', emp.LastName) as EmployeeName,
-                ve.amount as TotalAmount,
-                sts.Description as CurrentStatus,
-                (SELECT COUNT(*) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId) as DocumentCount
-            FROM dbo.visitexpense ve
-            INNER JOIN dbo.employeedetails emp ON emp.EMPCode = ve.EmpCode
-            INNER JOIN dbo.mststatus sts ON sts.StatusId = ve.ExpenseStatusId
-            WHERE ve.ExpenseReqId IN (${placeholders})
-            AND ve.isActive = 1
-        `;
-
-        const expenses: any = await sequelize.query(getExpensesQuery, {
-            replacements: queryReplacements,
-            type: QueryTypes.SELECT,
-        });
-
-        if (!expenses.length) {
-            res.status(400).json({
-                error: true,
-                message: "No expenses found for the provided IDs"
-            });
-            return;
-        }
-
-        // Get all documents for all expenses in ONE query
-        const allDocsQuery = `
-            SELECT 
-                ed.ExpenseDocId,
-                ed.ExpenseReqId,
-                ed.Amount,
-                emp.Email,
-                emp.FirstName,
-                emp.LastName,
-                vs.VisitFrom,
-                vs.VisitTo
-            FROM dbo.expensedocs ed
-            INNER JOIN dbo.visitexpense ve ON ve.ExpenseReqId = ed.ExpenseReqId
-            INNER JOIN dbo.employeedetails emp ON emp.EMPCode = ve.EmpCode
-            INNER JOIN dbo.visitsummary vs ON vs.VisitSummaryId = ve.VisitSummaryId
-            WHERE ed.ExpenseReqId IN (${placeholders})
-        `;
-
-        const allDocs: any = await sequelize.query(allDocsQuery, {
-            replacements: queryReplacements,
-            type: QueryTypes.SELECT,
-        });
-
-        // Map documents by ExpenseReqId
-        const docsMap = new Map<string, any[]>();
-        allDocs.forEach((doc: any) => {
-            if (!docsMap.has(doc.ExpenseReqId)) {
-                docsMap.set(doc.ExpenseReqId, []);
-            }
-            docsMap.get(doc.ExpenseReqId)!.push(doc);
-        });
-
-        // Update visitexpense - set ExpenseStatusChangeByHr flag
-        const expenseIdsToUpdate = expenseReqIds.map((id: string) => `'${id}'`).join(',');
-        const bulkUpdateExpenseQuery = `
-            UPDATE dbo.visitexpense 
-            SET 
-                ExpenseStatusChangeByHr = 1
-            WHERE ExpenseReqId IN (${expenseIdsToUpdate})
-        `;
-
-        await sequelize.query(bulkUpdateExpenseQuery, {
-            replacements: {},
-            type: QueryTypes.UPDATE,
-        });
-
-        // Bulk update expensedocs
-        if (allDocs.length > 0) {
-            const docIdsToUpdate = allDocs.map((d: any) => `'${d.ExpenseDocId}'`).join(',');
-            const bulkUpdateDocsQuery = `
-                UPDATE dbo.expensedocs 
-                SET 
-                    verificationStatusByHr = :verificationStatusByHr,
-                    StatusUpdatedByHrId = :StatusUpdatedByHrId,
-                    hold_reason_by_hr = :hold_reason_by_hr
-                WHERE ExpenseDocId IN (${docIdsToUpdate})
-            `;
-
-            await sequelize.query(bulkUpdateDocsQuery, {
-                replacements: {
-                    verificationStatusByHr: isHold ? "Hold" : "Release",
-                    StatusUpdatedByHrId: hrUserId,
-                    hold_reason_by_hr: isHold ? holdReason : null
-                },
-                type: QueryTypes.UPDATE,
-            });
-        }
-
-        // Send emails in parallel
-        const emailPromises: Promise<any>[] = [];
-        allDocs.forEach((doc: any) => {
-            emailPromises.push(
-                sentRejectExpenseMailByHr(
-                    doc.Email,
-                    doc.Amount,
-                    `${doc.FirstName} ${doc.LastName}`,
-                    doc.VisitFrom,
-                    doc.VisitTo,
-                    isHold, // true = Hold, false = Release
-                    doc.ExpenseReqId,
-                   
-                ).catch((err: any) => {
-                    console.log("Email sending failed:", err);
-                })
-            );
-        });
-
-        // Send emails in background (don't wait for response)
-        if (emailPromises.length > 0) {
-            Promise.all(emailPromises).catch((err) => {
-                console.log("Some emails failed:", err);
-            });
-        }
-
-        // Build response
-        const approvalDetails: BulkHrHoldReleaseResult['approvalDetails'] = [];
-        let holdCount = 0;
-        let releaseCount = 0;
-        let failedCount = 0;
-
-        for (const expense of expenses) {
-            try {
-                const docs = docsMap.get(expense.ExpenseReqId) || [];
-                const statusText = isHold ? 'Hold' : 'Release';
-
-                approvalDetails.push({
-                    ExpenseReqId: expense.ExpenseReqId,
-                    EmployeeName: expense.EmployeeName,
-                    EMPCode: expense.EmpCode,
-                    DocumentCount: docs.length,
-                    Amount: expense.TotalAmount,
-                    Status: 'Success',
-                    Message: `Expense ${statusText} successfully (${docs.length} documents)`
-                });
-
-                if (isHold) {
-                    holdCount++;
-                } else {
-                    releaseCount++;
-                }
-            } catch (expenseError: any) {
-                console.log("Error processing expense:", expenseError);
-                failedCount++;
-                approvalDetails.push({
-                    ExpenseReqId: expense.ExpenseReqId,
-                    EmployeeName: expense.EmployeeName,
-                    EMPCode: expense.EmpCode,
-                    DocumentCount: 0,
-                    Amount: expense.TotalAmount,
-                    Status: 'Failed',
-                    Message: expenseError.message || 'Failed to process expense'
-                });
-            }
-        }
-
-        const result: BulkHrHoldReleaseResult = {
-            totalExpenses: expenses.length,
-            holdCount,
-            releaseCount,
-            failedCount,
-            approvalDetails
-        };
-
-        res.status(200).json({
-            error: false,
-            data: result,
-            message: `Bulk ${isHold ? 'hold' : 'release'} completed: ${holdCount + releaseCount}/${expenses.length} expenses processed`
-        });
-
-    } catch (error: any) {
-        console.log(error, "Bulk HR Hold/Release Error");
-        if (error?.isJoi === true) error.status = 422;
-        next(error);
-    }
-};
-
 
 const approveDisapproveClaimByFinance = async (req: RequestType, res: Response, next: NextFunction): Promise<void> => {
     try {
@@ -2023,69 +1517,65 @@ const generateDetailedExpenseReport = async (
 
         const employee = empResult[0];
 
-
         const expenseQuery = `
-    SELECT 
-        TRY_CONVERT(DECIMAL(18,2), REPLACE(ve.amount, ',', '')) as TotalAmount,
-        em.ExpModeDesc as ExpenseType,
-        cm.ConvModeDesc as ConveyanceMode,
-        cm.ConvModeId,
-        ve.Reason,
-        'Approved' as ExpenseStatus
-    FROM dbo.visitexpense ve
-    LEFT JOIN dbo.mstexpmode em ON em.ExpModeId = TRY_CONVERT(SMALLINT, ve.expensemodeid)
-    LEFT JOIN dbo.mstconvmode cm ON cm.ConvModeId = TRY_CONVERT(SMALLINT, ve.ConvModeId)
-    INNER JOIN dbo.mststatus sts ON sts.StatusId = ve.ExpenseStatusId
-    WHERE ve.EmpCode = :empCode
-      AND ve.isActive = 1
-      AND sts.Description = 'Approved'
-      AND CAST(ve.createdAt AS DATE) BETWEEN :startDate AND :endDate
-    ORDER BY ve.createdAt DESC
-`;
+            SELECT 
+                ve.amount as TotalAmount,
+                em.ExpModeDesc as ExpenseType,
+                cm.ConvModeDesc as ConveyanceMode,
+                cm.ConvModeId,
+                ve.Reason,
+                sts.Description as Status
+            FROM dbo.visitexpense ve
+            LEFT JOIN dbo.mstexpmode em ON em.ExpModeId = TRY_CONVERT(SMALLINT, ve.expensemodeid)
+            LEFT JOIN dbo.mstconvmode cm ON cm.ConvModeId = TRY_CONVERT(SMALLINT, ve.ConvModeId)
+            INNER JOIN dbo.mststatus sts ON sts.StatusId = ve.ExpenseStatusId
+            WHERE ve.EmpCode = :empCode
+            AND ve.isActive = 1
+            AND sts.Description = 'Approved'
+            AND CAST(ve.createdAt AS DATE) BETWEEN :startDate AND :endDate
+            ORDER BY ve.createdAt DESC
+        `;
 
         const expenses: any = await sequelize.query(expenseQuery, {
             replacements: { empCode, startDate, endDate },
             type: QueryTypes.SELECT,
         });
 
-
         const expenseMap = new Map<string, ExpenseTypeDetail>();
 
         expenses.forEach((expense: any) => {
-            let expenseType = "";
-            let subtype = "";
-            const amount = Number(expense.TotalAmount || 0);
+            let expenseType = '';
+            let subtype = '';
+            let amount = expense.TotalAmount;
 
-            if (expense.ExpenseType === "Hotel") {
-                expenseType = "Hotel";
-                if (expense.Reason === "Metro") subtype = "Metro";
-                else if (expense.Reason === "no_metro") subtype = "Non-Metro";
-                else if (expense.Reason === "self_stay") subtype = "Self-Stay";
-                else subtype = expense.Reason || "General";
+            if (expense.ExpenseType === 'Hotel') {
+                expenseType = 'Hotel';
+                if (expense.Reason === 'Metro') subtype = 'Metro';
+                else if (expense.Reason === 'no_metro') subtype = 'Non-Metro';
+                else if (expense.Reason === 'self_stay') subtype = 'Self-Stay';
+                else subtype = expense.Reason || 'General';
             }
-            else if (expense.ExpenseType === "Food") {
-                expenseType = "Food";
-                if (expense.Reason === "Local Visit") subtype = "Local Visit";
-                else if (expense.Reason === "Outside Visit") subtype = "Outside Visit";
-                else subtype = expense.Reason || "General";
+            else if (expense.ExpenseType === 'Food') {
+                expenseType = 'Food';
+                if (expense.Reason === 'Local Visit') subtype = 'Local Visit';
+                else if (expense.Reason === 'Outside Visit') subtype = 'Outside Visit';
+                else subtype = expense.Reason || 'General';
             }
-            else if (expense.ExpenseType === "Conveyance") {
-                expenseType = "Conveyance";
-                if (expense.ConvModeId == 1) subtype = "Car";
-                else if (expense.ConvModeId == 2) subtype = "Bike";
-                else if (expense.ConvModeId == 3 || expense.ConvModeId == 4) subtype = "Public Transport";
-                else subtype = expense.ConveyanceMode || "General";
+            else if (expense.ExpenseType === 'Conveyance') {
+                expenseType = 'Conveyance';
+                if (expense.ConvModeId == 1) subtype = 'Car';
+                else if (expense.ConvModeId == 2) subtype = 'Bike';
+                else if (expense.ConvModeId == 3 || expense.ConvModeId == 4) subtype = 'Public Transport';
+                else subtype = expense.ConveyanceMode || 'General';
             }
-            else if (expense.ExpenseType === "Miscellaneous") {
-                expenseType = "Miscellaneous";
-                subtype = "Miscellaneous";
+            else if (expense.ExpenseType === 'Miscellaneous') {
+                expenseType = 'Miscellaneous';
+                subtype = 'Miscellaneous';
             }
-            else if (expense.ExpenseType === "DA") {
-                expenseType = "DA";
-                subtype = "DA";
+            else if (expense.ExpenseType === 'DA') {
+                expenseType = 'DA';
+                subtype = 'DA';
             }
-
-            if (!expenseType) return;
 
             if (!expenseMap.has(expenseType)) {
                 expenseMap.set(expenseType, {
@@ -2107,11 +1597,10 @@ const generateDetailedExpenseReport = async (
             typeData.totalAmount += amount;
         });
 
-        const reportData = Array.from(expenseMap.values());
-
+        const reportData: ExpenseTypeDetail[] = Array.from(expenseMap.values());
 
         let grandTotal = 0;
-        reportData.forEach(t => grandTotal += Number(t.totalAmount));
+        reportData.forEach(t => grandTotal += t.totalAmount);
 
         // ==================== PDF START ====================
         const doc = new PDFDocument({
@@ -2130,10 +1619,11 @@ const generateDetailedExpenseReport = async (
 
         // Header
         doc.fontSize(14).font("Helvetica-Bold").text("FORZA MEDI INDIA PVT LTD", { align: "center" });
-        doc.fontSize(9).font("Helvetica")
+        doc.fontSize(9)
+            .font("Helvetica")
             .text("Plot :167, 2nd Floor, IMT Manesar, Gurugram, Haryana", { align: "center" });
-
         doc.moveDown(0.5);
+
         doc.fontSize(12).font("Helvetica-Bold")
             .text("Expense Reimbursement Summary", { align: "center" });
 
@@ -2141,101 +1631,65 @@ const generateDetailedExpenseReport = async (
 
         // Employee
         doc.fontSize(10).font("Helvetica")
-            .text(`Employee Code:  ${employee.EMPCode}`, 50);
-
-        // sirf date bold
-        doc.font("Helvetica-Bold")
+            .text(`Employee Code:  ${employee.EMPCode}`, 50)
             .text(`Date:  ${new Date().toLocaleDateString("en-GB")}`, 420);
 
-        // back to normal
-        doc.font("Helvetica")
-            .text(`Employee Name: ${employee.EmployeeName}`, 50);
-
-        doc.text(`Department: ${employee.DepartmentName || "N/A"}`, 50);
+        doc.text(`Employee Name: ${employee.EmployeeName}`, 50);
+        doc.text(`Department: ${employee.DesigId || "N/A"}`, 50);
 
         doc.moveDown(0.6);
         doc.font("Helvetica-Bold")
-            .text(`Summarized Approved Expense Details for the Month of ${getMonthName(startDate.toString())}  to ${getMonthName(endDate.toString())}`);
+            .text(`Summarized Approved Expense Details for the Month of ${getMonthName(startDate.toString())}:`);
         doc.moveDown(0.6);
 
-        // ================= TABLE EXACT DESIGN =================
+        // ================= TABLE =================
         const startX = 50;
         let y = doc.y;
+        const rowHeight = 18;
+        const col1 = 160;
+        const col2 = 170;
+        // const col3 = 120;
 
-        const col1 = 180;
-        const col2 = 200;
-        const col3 = 120;
-        const tableWidth = col1 + col2 + col3;
-        const rowHeight = 22;
+        doc.rect(startX, y, 500, rowHeight).stroke();
 
-        // Header Row
-        doc.rect(startX, y, tableWidth, rowHeight).stroke();
         doc.font("Helvetica-Bold")
-            .text("Expense Type", startX + 5, y + 6)
-            .text("Subtype", startX + col1 + 5, y + 6)
-            .text("Amount", startX + col1 + col2 + 5, y + 6);
+            .text("Expense Type", startX + 5, y + 5)
+            .text("Subtype", startX + col1 + 5, y + 5)
+            .text("Amount", startX + col1 + col2 + 5, y + 5);
 
         y += rowHeight;
+
         doc.font("Helvetica").fontSize(10);
 
         reportData.forEach(exp => {
-            const rows = exp.subtypes.length || 1;
-            const blockHeight = rows * rowHeight;
-
-            // Left merged Expense Type block
-            doc.rect(startX, y, col1, blockHeight).stroke();
-            doc.text(exp.type, startX + 5, y + (blockHeight / 2) - 6);
+            doc.rect(startX, y, 500, rowHeight).stroke();
+            doc.text(exp.type, startX + 5, y + 5);
+            y += rowHeight;
 
             exp.subtypes.forEach(sub => {
-                doc.rect(startX + col1, y, col2, rowHeight).stroke();
-                doc.text(sub.name, startX + col1 + 5, y + 6);
-
-                doc.rect(startX + col1 + col2, y, col3, rowHeight).stroke();
-                doc.text(Number(sub.amount).toString(), startX + col1 + col2 + 5, y + 6);
-
+                doc.rect(startX, y, 500, rowHeight).stroke();
+                doc.text("", startX + 5, y + 5);
+                doc.text(sub.name, startX + col1 + 5, y + 5);
+                doc.text(sub.amount.toString(), startX + col1 + col2 + 5, y + 5);
                 y += rowHeight;
             });
         });
 
-        // TOTAL ROW
+        doc.rect(startX, y, 500, rowHeight).stroke();
         doc.font("Helvetica-Bold");
-        doc.rect(startX, y, col1 + col2, rowHeight).stroke();
-        doc.text("Total Amount", startX + col1 + 60, y + 6);
+        doc.text("Total Amount", startX + col1 + 5, y + 5);
+        doc.text(grandTotal.toString(), startX + col1 + col2 + 5, y + 5);
 
-        doc.rect(startX + col1 + col2, y, col3, rowHeight).stroke();
-        doc.text(Number(grandTotal).toString(), startX + col1 + col2 + 5, y + 6);
+        y += 30;
 
+        doc.fontSize(10)
+            .text(`Total Expense for the Month of ${getMonthName(startDate.toString())}: ${grandTotal}`, startX);
 
-        doc.moveDown(1);
-       
+        doc.moveDown(2);
 
-        doc.fontSize(10).font("Helvetica-Bold")
-            .text(
-                `Total Expense for the Period: ${getMonthName(startDate.toString())}  to ${getMonthName(endDate.toString())} : ${grandTotal}`,
-                startX,
-                doc.y + 5
-            );
-
-        doc.moveDown(3);
-
-
-        const signY = doc.y;
-        const lineWidth = 120;
-
-        doc.fontSize(10).font("Helvetica");
-
-        // Created By
-        doc.text("Created By:", startX, signY);
-        doc.moveTo(startX + 80, signY + 12).lineTo(startX + 80 + lineWidth, signY + 12).stroke();
-
-        // Checked By
-        doc.text("Checked By:", startX + 220, signY);
-        doc.moveTo(startX + 300, signY + 12).lineTo(startX + 300 + lineWidth, signY + 12).stroke();
-
-        // Approved By
-        doc.text("Approved By:", startX + 440, signY);
-        doc.moveTo(startX + 525, signY + 12).lineTo(startX + 525 + lineWidth, signY + 12).stroke();
-
+        doc.text("Created By: ____________________", startX);
+        doc.text("Checked By   : ____________________", startX + 170);
+        doc.text("Approved By: ____________________", startX + 340);
 
         doc.end();
         // ==================== PDF END ====================
@@ -2245,7 +1699,7 @@ const generateDetailedExpenseReport = async (
         if (!res.headersSent) {
             res.status(500).json({
                 error: true,
-                message: "Failed to generate report",
+                message: 'Failed to generate report',
                 details: error.message
             });
         }
@@ -2256,10 +1710,10 @@ const generateDetailedExpenseReport = async (
 const getMonthName = (dateString: string): string => {
     const date = new Date(dateString);
     const monthNames = [
-        "January", "February", "March", "April", "May", "June",
-        "July", "August", "September", "October", "November", "December"
+        'January','February','March','April','May','June',
+        'July','August','September','October','November','December'
     ];
-    return monthNames[date.getMonth()] + "-" + date.getFullYear();
+    return monthNames[date.getMonth()] + '-' + date.getFullYear();
 };
 
 
@@ -2271,7 +1725,6 @@ export {
     getExportExpenseHr,
     getExpenseAmount,
     approveDisapproveClaim,
-    bulkApproveExpensesByIds,
     getExpenseById,
     expMstMode,
     mstConMode,
@@ -2279,7 +1732,6 @@ export {
     uploadExpenseDoc,
     updateConvModeRate,
     approveDisapproveClaimByHr,
-    bulkHoldReleaseExpensesByHr,
     approveDisapproveClaimByFinance,
     generateExpensePdfWithWatermark,
     generateDetailedExpenseReport

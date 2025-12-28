@@ -933,50 +933,44 @@ const approveDisapproveClaim = async (req: RequestType, res: Response, next: Nex
 };
 
 
-interface BulkApproveByIdsRequest {
-    expenseReqIds: string[]; // Array of ExpenseReqId
+interface BulkManagerApprovalRequest {
+    startDate: string;
+    endDate: string;
+    empCode?: string; // Optional - specific employee or all team members
     isApprove: boolean; // true = Approve, false = Reject
     rejectReason?: string; // Required if isApprove = false
 }
 
-interface BulkApproveByIdsResult {
+interface ManagerApprovalResult {
     totalExpenses: number;
     approvedCount: number;
     rejectedCount: number;
     failedCount: number;
     approvalDetails: Array<{
         ExpenseReqId: string;
+        ExpenseDocId: string;
         EmployeeName: string;
         EMPCode: string;
-        DocumentCount: number;
         Amount: number;
         Status: 'Success' | 'Failed';
         Message: string;
     }>;
 }
 
-const bulkApproveExpensesByIds = async (
+const bulkApproveExpensesByManager = async (
     req: RequestType,
     res: Response,
     next: NextFunction
 ): Promise<void> => {
     try {
-        const { expenseReqIds, isApprove, rejectReason } = req.body as BulkApproveByIdsRequest;
+        const { startDate, endDate, empCode, isApprove, rejectReason } = req.body as BulkManagerApprovalRequest;
         const managerId = req?.payload?.appUserId;
 
         // Validate required fields
-        if (!expenseReqIds || !Array.isArray(expenseReqIds) || expenseReqIds.length === 0) {
+        if (!startDate || !endDate || isApprove === undefined) {
             res.status(400).json({
                 error: true,
-                message: "expenseReqIds array is required and must contain at least one ID"
-            });
-            return;
-        }
-
-        if (isApprove === undefined) {
-            res.status(400).json({
-                error: true,
-                message: "isApprove is required"
+                message: "startDate, endDate, and isApprove are required"
             });
             return;
         }
@@ -990,12 +984,51 @@ const bulkApproveExpensesByIds = async (
             return;
         }
 
-        // Get expense details for all provided IDs
-        const placeholders = expenseReqIds.map((_, i) => `:id${i}`).join(',');
-        const queryReplacements: any = { managerId };
-        expenseReqIds.forEach((id: string, i: number) => {
-            queryReplacements[`id${i}`] = id;
+        // Get manager's team members
+        const teamMembersQuery = `
+            SELECT EMPCode 
+            FROM dbo.employeedetails 
+            WHERE MgrEmployeeID = :managerId
+        `;
+
+        const teamMembers: any = await sequelize.query(teamMembersQuery, {
+            replacements: { managerId },
+            type: QueryTypes.SELECT,
         });
+
+        const teamMemberCodes = teamMembers.map((t: any) => t.EMPCode);
+
+        if (!teamMemberCodes.length) {
+            res.status(400).json({
+                error: true,
+                message: "No team members found under this manager"
+            });
+            return;
+        }
+
+        // Get all expenses for the team (or specific employee)
+        let filterCondition = '';
+        const queryReplacements: any = { startDate, endDate, managerId };
+
+        if (empCode && empCode !== 'all') {
+            // Verify that the employee is under this manager
+            if (!teamMemberCodes.includes(empCode)) {
+                res.status(403).json({
+                    error: true,
+                    message: "You can only approve expenses of your team members"
+                });
+                return;
+            }
+            filterCondition = 'AND ve.EmpCode = :empCode';
+            queryReplacements.empCode = empCode;
+        } else {
+            // All team members
+            const placeholders = teamMemberCodes.map((_: any, i: any) => `:empCode${i}`).join(',');
+            filterCondition = `AND ve.EmpCode IN (${placeholders})`;
+            teamMemberCodes.forEach((code: string, i: number) => {
+                queryReplacements[`empCode${i}`] = code;
+            });
+        }
 
         const getExpensesQuery = `
             SELECT 
@@ -1003,13 +1036,14 @@ const bulkApproveExpensesByIds = async (
                 ve.EmpCode,
                 CONCAT(emp.FirstName, ' ', emp.LastName) as EmployeeName,
                 ve.amount as TotalAmount,
-                sts.Description as CurrentStatus,
-                (SELECT COUNT(*) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId) as DocumentCount
+                sts.Description as CurrentStatus
             FROM dbo.visitexpense ve
             INNER JOIN dbo.employeedetails emp ON emp.EMPCode = ve.EmpCode
             INNER JOIN dbo.mststatus sts ON sts.StatusId = ve.ExpenseStatusId
-            WHERE ve.ExpenseReqId IN (${placeholders})
-            AND ve.isActive = 1
+            WHERE ve.isActive = 1
+            AND CAST(ve.createdAt AS DATE) BETWEEN :startDate AND :endDate
+            ${filterCondition}
+            ORDER BY ve.createdAt DESC
         `;
 
         const expenses: any = await sequelize.query(getExpensesQuery, {
@@ -1020,132 +1054,124 @@ const bulkApproveExpensesByIds = async (
         if (!expenses.length) {
             res.status(400).json({
                 error: true,
-                message: "No expenses found for the provided IDs"
+                message: "No expenses found for the given criteria"
             });
             return;
         }
 
-        // Get all documents for all expenses in ONE query
-        const allDocsQuery = `
-            SELECT 
-                ed.ExpenseDocId,
-                ed.ExpenseReqId,
-                ed.Amount,
-                emp.Email,
-                emp.FirstName,
-                emp.LastName,
-                vs.VisitFrom,
-                vs.VisitTo
-            FROM dbo.expensedocs ed
-            INNER JOIN dbo.visitexpense ve ON ve.ExpenseReqId = ed.ExpenseReqId
-            INNER JOIN dbo.employeedetails emp ON emp.EMPCode = ve.EmpCode
-            INNER JOIN dbo.visitsummary vs ON vs.VisitSummaryId = ve.VisitSummaryId
-            WHERE ed.ExpenseReqId IN (${placeholders})
-        `;
-
-        const allDocs: any = await sequelize.query(allDocsQuery, {
-            replacements: queryReplacements,
-            type: QueryTypes.SELECT,
-        });
-
-        // Map documents by ExpenseReqId
-        const docsMap = new Map<string, any[]>();
-        allDocs.forEach((doc: any) => {
-            if (!docsMap.has(doc.ExpenseReqId)) {
-                docsMap.set(doc.ExpenseReqId, []);
-            }
-            docsMap.get(doc.ExpenseReqId)!.push(doc);
-        });
-
-        // Prepare bulk update queries
-        const expenseIdsToUpdate = expenseReqIds.map((id: string) => `'${id}'`).join(',');
-
-        // Bulk update visitexpense
-        const bulkUpdateExpenseQuery = `
-            UPDATE dbo.visitexpense 
-            SET 
-                ExpenseStatusId = :ExpenseStatusId,
-                ApprovedById = :ApprovedById,
-                reject_reason = :reject_reason
-            WHERE ExpenseReqId IN (${expenseIdsToUpdate})
-        `;
-
-        await sequelize.query(bulkUpdateExpenseQuery, {
-            replacements: {
-                ExpenseStatusId: isApprove ? "2" : "3",
-                ApprovedById: managerId,
-                reject_reason: rejectReason || null
-            },
-            type: QueryTypes.UPDATE,
-        });
-
-        // Bulk update expensedocs
-        if (allDocs.length > 0) {
-            const docIdsToUpdate = allDocs.map((d: any) => `'${d.ExpenseDocId}'`).join(',');
-            const bulkUpdateDocsQuery = `
-                UPDATE dbo.expensedocs 
-                SET 
-                    isVerified = :isVerified,
-                    ApprovedById = :ApprovedById,
-                    reject_reason = :reject_reason
-                WHERE ExpenseDocId IN (${docIdsToUpdate})
-            `;
-
-            await sequelize.query(bulkUpdateDocsQuery, {
-                replacements: {
-                    isVerified: isApprove ? "Approved" : "Rejected",
-                    ApprovedById: managerId,
-                    reject_reason: rejectReason || null
-                },
-                type: QueryTypes.UPDATE,
-            });
-        }
-
-        // Send emails in parallel
-        const emailPromises: Promise<any>[] = [];
-        allDocs.forEach((doc: any) => {
-            emailPromises.push(
-                sentRejectExpenseMail(
-                    doc.Email,
-                    doc.Amount,
-                    `${doc.FirstName} ${doc.LastName}`,
-                    doc.VisitFrom,
-                    doc.VisitTo,
-                    isApprove,
-                    doc.ExpenseReqId,
-                    
-                ).catch((err: any) => {
-                    console.log("Email sending failed:", err);
-                })
-            );
-        });
-
-        // Send emails in background (don't wait for response)
-        if (emailPromises.length > 0) {
-            Promise.all(emailPromises).catch((err) => {
-                console.log("Some emails failed:", err);
-            });
-        }
-
-        // Build response
-        const approvalDetails: BulkApproveByIdsResult['approvalDetails'] = [];
+        const approvalDetails: ManagerApprovalResult['approvalDetails'] = [];
         let approvedCount = 0;
         let rejectedCount = 0;
         let failedCount = 0;
 
+        // Process each expense
         for (const expense of expenses) {
             try {
-                const docs = docsMap.get(expense.ExpenseReqId) || [];
-                const statusText = isApprove ? 'approved' : 'rejected';
+                // Get all documents for this expense
+                const docsQuery = `
+                    SELECT 
+                        ed.ExpenseDocId,
+                        ed.Amount,
+                        emp.Email,
+                        emp.FirstName,
+                        emp.LastName,
+                        vs.VisitFrom,
+                        vs.VisitTo
+                    FROM dbo.expensedocs ed
+                    INNER JOIN dbo.visitexpense ve ON ve.ExpenseReqId = ed.ExpenseReqId
+                    INNER JOIN dbo.employeedetails emp ON emp.EMPCode = ve.EmpCode
+                    INNER JOIN dbo.visitsummary vs ON vs.VisitSummaryId = ve.VisitSummaryId
+                    WHERE ed.ExpenseReqId = :ExpenseReqId
+                `;
 
+                const docs: any = await sequelize.query(docsQuery, {
+                    replacements: { ExpenseReqId: expense.ExpenseReqId },
+                    type: QueryTypes.SELECT,
+                });
+
+                console.log("Docs Query Result:", docs, "For ExpenseReqId:", expense.ExpenseReqId);
+
+                if (!docs.length) {
+                    failedCount++;
+                    approvalDetails.push({
+                        ExpenseReqId: expense.ExpenseReqId,
+                        ExpenseDocId: 'N/A',
+                        EmployeeName: expense.EmployeeName,
+                        EMPCode: expense.EmpCode,
+                        Amount: expense.TotalAmount,
+                        Status: 'Failed',
+                        Message: 'No documents found for this expense'
+                    });
+                    continue;
+                }
+
+                // Update visitexpense status
+                const updateExpenseQuery = `
+                    UPDATE dbo.visitexpense 
+                    SET 
+                        ExpenseStatusId = :ExpenseStatusId,
+                        ApprovedById = :ApprovedById,
+                        reject_reason = :reject_reason
+                    WHERE ExpenseReqId = :ExpenseReqId
+                `;
+
+                await sequelize.query(updateExpenseQuery, {
+                    replacements: {
+                        ExpenseStatusId: isApprove ? "2" : "3", // 2 = Approved, 3 = Rejected
+                        ApprovedById: managerId,
+                        reject_reason: rejectReason || null,
+                        ExpenseReqId: expense.ExpenseReqId
+                    },
+                    type: QueryTypes.UPDATE,
+                });
+
+                // Update all documents for this expense
+                for (const doc of docs) {
+                    const updateDocQuery = `
+                        UPDATE dbo.expensedocs 
+                        SET 
+                            isVerified = :isVerified,
+                            ApprovedById = :ApprovedById,
+                            reject_reason = :reject_reason
+                        WHERE ExpenseDocId = :ExpenseDocId
+                    `;
+
+                    await sequelize.query(updateDocQuery, {
+                        replacements: {
+                            isVerified: isApprove ? "Approved" : "Rejected",
+                            ApprovedById: managerId,
+                            reject_reason: rejectReason || null,
+                            ExpenseDocId: doc.ExpenseDocId
+                        },
+                        type: QueryTypes.UPDATE,
+                    });
+
+                    // Send email notification
+                    try {
+                        await sentRejectExpenseMail(
+                            doc.Email,
+                            doc.Amount,
+                            `${doc.FirstName} ${doc.LastName}`,
+                            doc.VisitFrom,
+                            doc.VisitTo,
+                            isApprove, // true = Approved, false = Rejected
+                            expense.ExpenseReqId,
+                            rejectReason || null // Add reason parameter
+                        );
+                    } catch (emailError) {
+                        console.log("Email sending failed, but expense updated:", emailError);
+                    }
+                }
+
+                const statusText = isApprove ? 'approved' : 'rejected';
                 approvalDetails.push({
                     ExpenseReqId: expense.ExpenseReqId,
+                    ExpenseDocId: docs[0]?.ExpenseDocId,
                     EmployeeName: expense.EmployeeName,
                     EMPCode: expense.EmpCode,
-                    DocumentCount: docs.length,
                     Amount: expense.TotalAmount,
                     Status: 'Success',
-                    Message: `Expense ${statusText} successfully (${docs.length} documents)`
+                    Message: `Expense ${statusText} successfully`
                 });
 
                 if (isApprove) {
@@ -1153,14 +1179,16 @@ const bulkApproveExpensesByIds = async (
                 } else {
                     rejectedCount++;
                 }
+
             } catch (expenseError: any) {
                 console.log("Error processing expense:", expenseError);
+
                 failedCount++;
                 approvalDetails.push({
                     ExpenseReqId: expense.ExpenseReqId,
+                    ExpenseDocId: 'N/A',
                     EmployeeName: expense.EmployeeName,
                     EMPCode: expense.EmpCode,
-                    DocumentCount: 0,
                     Amount: expense.TotalAmount,
                     Status: 'Failed',
                     Message: expenseError.message || 'Failed to process expense'
@@ -1168,7 +1196,7 @@ const bulkApproveExpensesByIds = async (
             }
         }
 
-        const result: BulkApproveByIdsResult = {
+        const result: ManagerApprovalResult = {
             totalExpenses: expenses.length,
             approvedCount,
             rejectedCount,
@@ -1183,11 +1211,12 @@ const bulkApproveExpensesByIds = async (
         });
 
     } catch (error: any) {
-        console.log(error, "Bulk Approve By IDs Error");
+        console.log(error, "Bulk Manager Approval Error");
         if (error?.isJoi === true) error.status = 422;
         next(error);
     }
 };
+
 
 const approveDisapproveClaimByHr = async (req: RequestType, res: Response, next: NextFunction): Promise<void> => {
     try {
@@ -1246,255 +1275,6 @@ const approveDisapproveClaimByHr = async (req: RequestType, res: Response, next:
         next(error);
     }
 };
-
-interface BulkHrHoldReleaseRequest {
-    expenseReqIds: string[]; // Array of ExpenseReqId
-    isHold: boolean; // true = Hold, false = Release
-    holdReason?: string; // Required if isHold = true
-}
-
-interface BulkHrHoldReleaseResult {
-    totalExpenses: number;
-    holdCount: number;
-    releaseCount: number;
-    failedCount: number;
-    approvalDetails: Array<{
-        ExpenseReqId: string;
-        EmployeeName: string;
-        EMPCode: string;
-        DocumentCount: number;
-        Amount: number;
-        Status: 'Success' | 'Failed';
-        Message: string;
-    }>;
-}
-
-const bulkHoldReleaseExpensesByHr = async (
-    req: RequestType,
-    res: Response,
-    next: NextFunction
-): Promise<void> => {
-    try {
-        const { expenseReqIds, isHold, holdReason } = req.body as BulkHrHoldReleaseRequest;
-        const hrUserId = req?.payload?.appUserId;
-
-        // Validate required fields
-        if (!expenseReqIds || !Array.isArray(expenseReqIds) || expenseReqIds.length === 0) {
-            res.status(400).json({
-                error: true,
-                message: "expenseReqIds array is required and must contain at least one ID"
-            });
-            return;
-        }
-
-        if (isHold === undefined) {
-            res.status(400).json({
-                error: true,
-                message: "isHold is required"
-            });
-            return;
-        }
-
-        // If holding, reason is required
-        if (isHold && !holdReason) {
-            res.status(400).json({
-                error: true,
-                message: "holdReason is required when holding expenses"
-            });
-            return;
-        }
-
-        // Get expense details for all provided IDs
-        const placeholders = expenseReqIds.map((_, i) => `:id${i}`).join(',');
-        const queryReplacements: any = { hrUserId };
-        expenseReqIds.forEach((id: string, i: number) => {
-            queryReplacements[`id${i}`] = id;
-        });
-
-        const getExpensesQuery = `
-            SELECT 
-                ve.ExpenseReqId,
-                ve.EmpCode,
-                CONCAT(emp.FirstName, ' ', emp.LastName) as EmployeeName,
-                ve.amount as TotalAmount,
-                sts.Description as CurrentStatus,
-                (SELECT COUNT(*) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId) as DocumentCount
-            FROM dbo.visitexpense ve
-            INNER JOIN dbo.employeedetails emp ON emp.EMPCode = ve.EmpCode
-            INNER JOIN dbo.mststatus sts ON sts.StatusId = ve.ExpenseStatusId
-            WHERE ve.ExpenseReqId IN (${placeholders})
-            AND ve.isActive = 1
-        `;
-
-        const expenses: any = await sequelize.query(getExpensesQuery, {
-            replacements: queryReplacements,
-            type: QueryTypes.SELECT,
-        });
-
-        if (!expenses.length) {
-            res.status(400).json({
-                error: true,
-                message: "No expenses found for the provided IDs"
-            });
-            return;
-        }
-
-        // Get all documents for all expenses in ONE query
-        const allDocsQuery = `
-            SELECT 
-                ed.ExpenseDocId,
-                ed.ExpenseReqId,
-                ed.Amount,
-                emp.Email,
-                emp.FirstName,
-                emp.LastName,
-                vs.VisitFrom,
-                vs.VisitTo
-            FROM dbo.expensedocs ed
-            INNER JOIN dbo.visitexpense ve ON ve.ExpenseReqId = ed.ExpenseReqId
-            INNER JOIN dbo.employeedetails emp ON emp.EMPCode = ve.EmpCode
-            INNER JOIN dbo.visitsummary vs ON vs.VisitSummaryId = ve.VisitSummaryId
-            WHERE ed.ExpenseReqId IN (${placeholders})
-        `;
-
-        const allDocs: any = await sequelize.query(allDocsQuery, {
-            replacements: queryReplacements,
-            type: QueryTypes.SELECT,
-        });
-
-        // Map documents by ExpenseReqId
-        const docsMap = new Map<string, any[]>();
-        allDocs.forEach((doc: any) => {
-            if (!docsMap.has(doc.ExpenseReqId)) {
-                docsMap.set(doc.ExpenseReqId, []);
-            }
-            docsMap.get(doc.ExpenseReqId)!.push(doc);
-        });
-
-        // Update visitexpense - set ExpenseStatusChangeByHr flag
-        const expenseIdsToUpdate = expenseReqIds.map((id: string) => `'${id}'`).join(',');
-        const bulkUpdateExpenseQuery = `
-            UPDATE dbo.visitexpense 
-            SET 
-                ExpenseStatusChangeByHr = 1
-            WHERE ExpenseReqId IN (${expenseIdsToUpdate})
-        `;
-
-        await sequelize.query(bulkUpdateExpenseQuery, {
-            replacements: {},
-            type: QueryTypes.UPDATE,
-        });
-
-        // Bulk update expensedocs
-        if (allDocs.length > 0) {
-            const docIdsToUpdate = allDocs.map((d: any) => `'${d.ExpenseDocId}'`).join(',');
-            const bulkUpdateDocsQuery = `
-                UPDATE dbo.expensedocs 
-                SET 
-                    verificationStatusByHr = :verificationStatusByHr,
-                    StatusUpdatedByHrId = :StatusUpdatedByHrId,
-                    hold_reason_by_hr = :hold_reason_by_hr
-                WHERE ExpenseDocId IN (${docIdsToUpdate})
-            `;
-
-            await sequelize.query(bulkUpdateDocsQuery, {
-                replacements: {
-                    verificationStatusByHr: isHold ? "Hold" : "Release",
-                    StatusUpdatedByHrId: hrUserId,
-                    hold_reason_by_hr: isHold ? holdReason : null
-                },
-                type: QueryTypes.UPDATE,
-            });
-        }
-
-        // Send emails in parallel
-        const emailPromises: Promise<any>[] = [];
-        allDocs.forEach((doc: any) => {
-            emailPromises.push(
-                sentRejectExpenseMailByHr(
-                    doc.Email,
-                    doc.Amount,
-                    `${doc.FirstName} ${doc.LastName}`,
-                    doc.VisitFrom,
-                    doc.VisitTo,
-                    isHold, // true = Hold, false = Release
-                    doc.ExpenseReqId,
-                   
-                ).catch((err: any) => {
-                    console.log("Email sending failed:", err);
-                })
-            );
-        });
-
-        // Send emails in background (don't wait for response)
-        if (emailPromises.length > 0) {
-            Promise.all(emailPromises).catch((err) => {
-                console.log("Some emails failed:", err);
-            });
-        }
-
-        // Build response
-        const approvalDetails: BulkHrHoldReleaseResult['approvalDetails'] = [];
-        let holdCount = 0;
-        let releaseCount = 0;
-        let failedCount = 0;
-
-        for (const expense of expenses) {
-            try {
-                const docs = docsMap.get(expense.ExpenseReqId) || [];
-                const statusText = isHold ? 'Hold' : 'Release';
-
-                approvalDetails.push({
-                    ExpenseReqId: expense.ExpenseReqId,
-                    EmployeeName: expense.EmployeeName,
-                    EMPCode: expense.EmpCode,
-                    DocumentCount: docs.length,
-                    Amount: expense.TotalAmount,
-                    Status: 'Success',
-                    Message: `Expense ${statusText} successfully (${docs.length} documents)`
-                });
-
-                if (isHold) {
-                    holdCount++;
-                } else {
-                    releaseCount++;
-                }
-            } catch (expenseError: any) {
-                console.log("Error processing expense:", expenseError);
-                failedCount++;
-                approvalDetails.push({
-                    ExpenseReqId: expense.ExpenseReqId,
-                    EmployeeName: expense.EmployeeName,
-                    EMPCode: expense.EmpCode,
-                    DocumentCount: 0,
-                    Amount: expense.TotalAmount,
-                    Status: 'Failed',
-                    Message: expenseError.message || 'Failed to process expense'
-                });
-            }
-        }
-
-        const result: BulkHrHoldReleaseResult = {
-            totalExpenses: expenses.length,
-            holdCount,
-            releaseCount,
-            failedCount,
-            approvalDetails
-        };
-
-        res.status(200).json({
-            error: false,
-            data: result,
-            message: `Bulk ${isHold ? 'hold' : 'release'} completed: ${holdCount + releaseCount}/${expenses.length} expenses processed`
-        });
-
-    } catch (error: any) {
-        console.log(error, "Bulk HR Hold/Release Error");
-        if (error?.isJoi === true) error.status = 422;
-        next(error);
-    }
-};
-
 
 const approveDisapproveClaimByFinance = async (req: RequestType, res: Response, next: NextFunction): Promise<void> => {
     try {
@@ -2271,7 +2051,7 @@ export {
     getExportExpenseHr,
     getExpenseAmount,
     approveDisapproveClaim,
-    bulkApproveExpensesByIds,
+    bulkApproveExpensesByManager,
     getExpenseById,
     expMstMode,
     mstConMode,
@@ -2279,7 +2059,6 @@ export {
     uploadExpenseDoc,
     updateConvModeRate,
     approveDisapproveClaimByHr,
-    bulkHoldReleaseExpensesByHr,
     approveDisapproveClaimByFinance,
     generateExpensePdfWithWatermark,
     generateDetailedExpenseReport

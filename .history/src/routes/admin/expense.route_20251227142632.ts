@@ -17,7 +17,6 @@ appExpenseRouterV1.get('/get-expense-by-id', jwtModule.verifyAccessToken, appExp
 appExpenseRouterV1.post('/approve-disapprove-claim', jwtModule.verifyAccessToken, appExpenseController.approveDisapproveClaim);
 appExpenseRouterV1.post('/bulk-approve-disapprove-claim', jwtModule.verifyAccessToken, appExpenseController.bulkApproveExpensesByIds);
 appExpenseRouterV1.post('/approve-disapprove-claim-by-hr', jwtModule.verifyAccessToken, appExpenseController.approveDisapproveClaimByHr);
-appExpenseRouterV1.post('/bulk-approve-disapprove-claim-by-hr', jwtModule.verifyAccessToken, appExpenseController.bulkHoldReleaseExpensesByHr);
 appExpenseRouterV1.post('/approve-disapprove-claim-by-finance', jwtModule.verifyAccessToken, appExpenseController.approveDisapproveClaimByFinance);
 appExpenseRouterV1.post('/upload-expense-doc', jwtModule.verifyAccessToken, upload0.single('file'), appExpenseController.uploadExpenseDoc);
 appExpenseRouterV1.get('/pdf-with-watermark', jwtModule.verifyAccessToken, appExpenseController.generateExpensePdfWithWatermark);
