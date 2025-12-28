@@ -511,6 +511,7 @@ const getAllExpenseForHr = async (req: RequestType, res: Response, next: NextFun
     }
 };
 
+export default getAllExpenseForHr;
 
 const getExportExpense = async (req: RequestType, res: Response, next: NextFunction): Promise<void> => {
     try {

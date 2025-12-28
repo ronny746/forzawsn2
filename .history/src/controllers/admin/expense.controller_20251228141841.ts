@@ -373,42 +373,30 @@ const getAllExpense = async (req: RequestType, res: Response, next: NextFunction
 
 const getAllExpenseForHr = async (req: RequestType, res: Response, next: NextFunction): Promise<void> => {
     try {
+
+        // const DesigId = req?.payload?.DesigId;
         let searchKey = req.query.searchKey;
         const pageIndex: any = req.query.pageIndex || 0;
         const pageSize: any = req.query.pageSize || 10;
         const startDate: any = req.query.startDate;
         const endDate: any = req.query.endDate;
-        const expenseStatusChangeByHr = req.query.expenseStatusChangeByHr; // ✅ HR filter
         let searchEMPCode: any = req.query.EMPCode || req?.payload?.appUserId;
-
         if (req.query.EMPCode === "all") {
             searchEMPCode = '';
         }
+        console.log(searchEMPCode, startDate, endDate, "date==============>");
 
         if (!searchKey) searchKey = "";
         searchKey = "%" + searchKey + "%";
 
         let filter_query = ``;
 
-        // ✅ HR Status Filter has PRIORITY
-        if (expenseStatusChangeByHr !== undefined && expenseStatusChangeByHr !== "" && expenseStatusChangeByHr !== null) {
-            // HR filter provided - use ONLY this
-            if (expenseStatusChangeByHr === "0") {
-                filter_query = ` AND ve.ExpenseStatusChangeByHr = 0`;
-            } else if (expenseStatusChangeByHr === "1") {
-                filter_query = ` AND ve.ExpenseStatusChangeByHr = 1`;
-            }
-        } else {
-            // No HR filter - apply other filters
-            // Add date filtering if provided
-            if (startDate && endDate) {
-                filter_query = `AND CAST(ve.createdAt AS DATE) BETWEEN :startDate AND :endDate`;
-            }
-            if (searchEMPCode) {
-                filter_query += ` AND emp.EMPCode=:searchEMPCode`;
-            }
-            // Default: HR pending (NULL values)
-            filter_query += ` AND ve.ExpenseStatusChangeByHr IS NULL`;
+        // Add date filtering if provided
+        if (startDate && endDate) {
+            filter_query = `AND CAST(ve.createdAt AS DATE) BETWEEN :startDate AND :endDate`
+        }
+        if (searchEMPCode) {
+            filter_query += ` AND emp.EMPCode=:searchEMPCode`
         }
 
         let result: any = { count: 0, rows: [] };
@@ -436,7 +424,8 @@ const getAllExpenseForHr = async (req: RequestType, res: Response, next: NextFun
             (emp.FirstName LIKE :searchKey OR emp.LastName LIKE :searchKey OR emp.EMPCode LIKE :searchKey) 
             AND ve.isActive = 1
             ${filter_query}
-        ORDER BY ve.createdAt DESC`;
+            order by ve.createdAt desc
+        `;
 
         // Calculate row count if pageIndex is 0
         if (pageIndex !== undefined && pageSize) {
@@ -460,6 +449,8 @@ const getAllExpenseForHr = async (req: RequestType, res: Response, next: NextFun
             query = query + `\n OFFSET ${offset} ROWS FETCH NEXT ${pageSize} ROWS ONLY`;
         }
 
+        // console.log('query', query);
+
         // Execute the query
         result.rows = await sequelize.query(query, {
             replacements: {
@@ -471,35 +462,19 @@ const getAllExpenseForHr = async (req: RequestType, res: Response, next: NextFun
                 verifyType: "Approved"
             },
             type: QueryTypes.SELECT,
-        }).then((rows: any) => {
-            // ✅ Apply client-side filter as backup
-            let filtered = rows;
-            
-            if (expenseStatusChangeByHr !== undefined && expenseStatusChangeByHr !== "" && expenseStatusChangeByHr !== null) {
-                if (expenseStatusChangeByHr === "0") {
-                    filtered = rows.filter((item: any) => item.ExpenseStatusChangeByHr === 0);
-                } else if (expenseStatusChangeByHr === "1") {
-                    filtered = rows.filter((item: any) => item.ExpenseStatusChangeByHr === 1);
-                }
-            } else {
-                filtered = rows.filter((item: any) => item.ExpenseStatusChangeByHr === null);
-            }
-            
-            return filtered;
         });
-
         // Transform the array
         let transformedData = { count: 0, rows: [] };
-        transformedData.count = result.rows.length; // Update count after filtering
-        
+        transformedData.count = result.count;
+        console.log(result.rows, "dffd");
         transformedData.rows = result.rows?.map((item: any) => {
             // Parse the expenseDocs JSON string
             const parsedExpenseDocs = JSON.parse(item.Expense_document);
 
             // Return a new object with the parsed data
             return {
-                ...item,
-                Expense_document: parsedExpenseDocs
+                ...item, // Spread all existing keys from the original item
+                Expense_document: parsedExpenseDocs // Overwrite expenseDocs with the parsed array
             };
         });
 
@@ -510,7 +485,6 @@ const getAllExpenseForHr = async (req: RequestType, res: Response, next: NextFun
         next(error);
     }
 };
-
 
 const getExportExpense = async (req: RequestType, res: Response, next: NextFunction): Promise<void> => {
     try {
