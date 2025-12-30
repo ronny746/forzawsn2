@@ -1323,21 +1323,22 @@ const bulkHoldReleaseExpensesByHr = async (
         const { expenseReqIds, isRelease, holdReason } = req.body;
         const hrUserId = req?.payload?.appUserId;
 
-        // Validation
+        // ✅ Validation with return
         if (!expenseReqIds?.length || isRelease === undefined) {
             res.status(400).json({
                 error: true,
                 message: "expenseReqIds array and isRelease flag required"
             });
-            return;
+            return;  // ✅ ADD RETURN
         }
 
+        // ✅ Validation with return
         if (!isRelease && !holdReason) {
             res.status(400).json({
                 error: true,
                 message: "holdReason required when holding expenses"
             });
-            return;
+            return;  // ✅ ADD RETURN
         }
 
         const placeholders = expenseReqIds.map((_: any, i: any) => `:id${i}`).join(',');
@@ -1368,7 +1369,7 @@ const bulkHoldReleaseExpensesByHr = async (
                 error: true,
                 message: "No expenses found"
             });
-            return;
+            return;  // ✅ ADD RETURN
         }
 
         // Get all docs
@@ -1393,18 +1394,21 @@ const bulkHoldReleaseExpensesByHr = async (
         const expenseIdsToUpdate = expenseReqIds.map((id: string) => `'${id}'`).join(',');
         const bulkUpdateExpenseQuery = `
             UPDATE dbo.visitexpense 
-            SET ExpenseStatusChangeByHr = :ExpenseStatusChangeByHr
+            SET 
+                ExpenseStatusChangeByHr = :ExpenseStatusChangeByHr,
+                ExpenseStatusId = :ExpenseStatusId
             WHERE ExpenseReqId IN (${expenseIdsToUpdate})
         `;
 
         await sequelize.query(bulkUpdateExpenseQuery, {
             replacements: {
-                ExpenseStatusChangeByHr: isRelease ? 1 : 0
+                ExpenseStatusChangeByHr: isRelease ? 1 : 0,
+                ExpenseStatusId: isRelease ? 4 : 3  // 4 = Final/Released, 3 = On Hold
             },
             type: QueryTypes.UPDATE,
         });
 
-        console.log(`✅ Updated ${expenseReqIds.length} expenses - Status: ${isRelease ? 'Released' : 'Hold'}`);
+        console.log(`✅ Updated ${expenseReqIds.length} expenses - ExpenseStatusChangeByHr: ${isRelease ? 1 : 0}`);
 
         // Bulk update expensedocs
         if (allDocs.length > 0) {
@@ -1426,9 +1430,11 @@ const bulkHoldReleaseExpensesByHr = async (
                 },
                 type: QueryTypes.UPDATE,
             });
+
+            console.log(`✅ Updated ${allDocs.length} documents - Status: ${isRelease ? "Released" : "Hold"}`);
         }
 
-        // Send emails in background
+        // Send emails in parallel (don't wait)
         const emailPromises: Promise<any>[] = allDocs.map((doc: any) =>
             sentRejectExpenseMailByHr(
                 doc.Email,
@@ -1436,28 +1442,36 @@ const bulkHoldReleaseExpensesByHr = async (
                 `${doc.FirstName} ${doc.LastName}`,
                 doc.VisitFrom,
                 doc.VisitTo,
-                !isRelease,
+                !isRelease,  // true = Hold, false = Released
                 doc.ExpenseReqId
             ).catch((err: any) => {
                 console.log("Email failed for:", doc.Email, err);
             })
         );
 
+        // Fire emails in background
         if (emailPromises.length > 0) {
             Promise.all(emailPromises).catch(err => {
                 console.log("Some emails failed:", err);
             });
         }
 
+        // ✅ Immediate response
         if (!res.headersSent) {
             res.status(200).json({
                 error: false,
                 data: {
                     totalProcessed: expenses.length,
+                    docsUpdated: allDocs.length,
                     message: isRelease
-                        ? `✅ ${expenses.length} expense(s) released!`
-                        : `⏸️ ${expenses.length} expense(s) put on hold!`
-                },
+                        ? `✅ ${expenses.length} expense(s) RELEASED successfully!`
+                        : `⏸️ ${expenses.length} expense(s) put on HOLD successfully!`,
+                    details: {
+                        expenseIds: expenseReqIds,
+                        status: isRelease ? 'Released' : 'Hold',
+                        updatedAt: new Date().toISOString()
+                    }
+                }
             });
         }
 

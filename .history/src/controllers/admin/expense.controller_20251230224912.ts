@@ -1468,64 +1468,6 @@ const bulkHoldReleaseExpensesByHr = async (
     }
 };
 
-const approveDisapproveClaimByFinance = async (req: RequestType, res: Response, next: NextFunction): Promise<void> => {
-    try {
-        const { ExpenseReqId, isHold, holdReason, ExpenseDocId } = req.body;
-
-        const selectQuery = 'UPDATE dbo.visitexpense SET ExpenseStatusChangeByFinance=:ExpenseStatusChangeByFinance where ExpenseReqId=:ExpenseReqId'
-        const results: any = await sequelize.query(selectQuery, {
-            replacements: {
-                ExpenseStatusChangeByFinance: 1,
-                ExpenseReqId: ExpenseReqId
-            },
-            type: QueryTypes.UPDATE,
-        });
-
-        const updateQuery = 'UPDATE dbo.expensedocs SET verificationStatusByFinance=:verificationStatusByFinance, ApprovedByFinanceId=:ApprovedByFinanceId, hold_reason_by_finance=:hold_reason_by_finance where ExpenseDocId=:ExpenseDocId'
-        await sequelize.query(updateQuery, {
-            replacements: {
-                ApprovedByFinanceId: req?.payload?.appUserId,
-                verificationStatusByFinance: isHold ? "Hold" : "Release",
-                ExpenseDocId: ExpenseDocId,
-                hold_reason_by_finance: holdReason
-            },
-            type: QueryTypes.UPDATE,
-        });
-
-        // const docQuery = 'SELECT ed.*, (select ve.* from dbo.visitexpense ve where ve.ExpenseReqId=ed.ExpenseReqId) FROM dbo.expensedocs ed INNER JOIN dbo.visitexpense ve on ve.ExpenseReqId=ve.ExpenseReqId INNER JOIN dbo.employeedetails emp on emp.EMPCode=ve.EmpCode where ed.ExpenseDocId = :ExpenseDocId';
-        const docQuery = 'SELECT ed.*, emp.*, vs.* FROM dbo.visitexpense ve INNER JOIN dbo.expensedocs ed on ed.ExpenseReqId=ve.ExpenseReqId INNER JOIN dbo.employeedetails emp on emp.EMPCode=ve.EmpCode INNER JOIN dbo.visitsummary vs on vs.VisitSummaryId=ve.VisitSummaryId where ed.ExpenseDocId = :ExpenseDocId';
-        const docData: any = await sequelize.query(docQuery, {
-            replacements: {
-                ExpenseDocId: ExpenseDocId,
-            },
-            type: QueryTypes.SELECT,
-        });
-
-        console.log(docData, "docDAta");
-        const docData1 = docData[0];
-
-
-        // if (!isApprove) {
-        sentRejectExpenseMailByFinance(docData1?.Email, docData1?.Amount, docData1?.FirstName + ' ' + docData1?.LastName, docData1.VisitFrom, docData1?.VisitTo, isHold, ExpenseReqId);
-        // }
-
-        if (res.headersSent === false) {
-            res.status(200).send({
-                error: false,
-                data: {
-                    data: results,
-                    ExpenseReqId: ExpenseReqId,
-                    message: `Expense ${isHold ? 'holded' : 'release'} successfully.`
-                }
-            });
-        }
-    } catch (error: any) {
-        console.log(error, "Approve or Reject Error")
-        if (error?.isJoi === true) error.status = 422;
-        next(error);
-    }
-};
-
 const expMstMode = async (req: RequestType, res: Response): Promise<void> => {
     try {
         const decoded = req.payload;
