@@ -1860,25 +1860,17 @@ const generateExpensePdfWithWatermark = async (
             try {
                 docs = JSON.parse(expense.Expense_document);
             } catch {
-                console.log("Failed to parse Expense_document for expense:", expense.ExpenseReqId);
                 continue;
             }
 
             if (!Array.isArray(docs)) continue;
 
             docs.forEach((doc_item: any) => {
-                // ✅ Check both file and image - use whichever exists
-                const imageFile = doc_item.file || doc_item.image;
-
-                if (!imageFile) {
-                    console.log("No file or image found in doc_item:", doc_item);
-                    return;
-                }
+                if (!doc_item.file) return;
 
                 tasks.push((async () => {
                     try {
-                        const fileUrl = `${BASE_URL}${imageFile}`;
-                        console.log("Downloading image from:", fileUrl);
+                        const fileUrl = `${BASE_URL}${doc_item.file}`;
 
                         const resImg = await fastAxios.get(fileUrl);
                         let buffer: Buffer = Buffer.from(resImg.data as Buffer);
@@ -1887,7 +1879,6 @@ const generateExpensePdfWithWatermark = async (
                         let width = meta.width || 800;
                         let height = meta.height || 1000;
 
-                        // Compress if too large
                         if (width > 1800) {
                             buffer = await sharp(buffer)
                                 .resize(1800)
@@ -1917,10 +1908,8 @@ const generateExpensePdfWithWatermark = async (
                             height: finalMeta.height || height
                         });
 
-                        console.log("✅ Image processed successfully:", imageFile);
-
                     } catch (err) {
-                        console.log("❌ Image failed, skipping:", imageFile, err);
+                        console.log("Image failed, skipping", err);
                     }
                 })());
             });
@@ -1935,8 +1924,6 @@ const generateExpensePdfWithWatermark = async (
             });
             return;
         }
-
-        console.log(`✅ Total images processed: ${allImages.length}`);
 
         // Generate PDF
         const doc = new PDFDocument({ autoFirstPage: false });
@@ -1962,15 +1949,13 @@ const generateExpensePdfWithWatermark = async (
         }
 
         doc.end();
-        console.log("✅ PDF generated successfully");
-
     } catch (err) {
-        console.error("❌ PDF Generation Error:", err);
+        console.error(err);
         if (!res.headersSent) {
             res.status(500).json({
                 error: true,
                 message: "Failed to generate PDF",
-                details: err instanceof Error ? err.message : String(err)
+                details: err
             });
         }
         next(err);
@@ -2028,7 +2013,7 @@ const generateDetailedExpenseReport = async (
 
         const employee = empResult[0];
 
-        // ✅ ONLY get HR Released expenses (ExpenseStatusChangeByHr = 1)
+
         const expenseQuery = `
     SELECT 
         TRY_CONVERT(DECIMAL(18,2), REPLACE(ve.amount, ',', '')) as TotalAmount,
@@ -2043,8 +2028,7 @@ const generateDetailedExpenseReport = async (
     INNER JOIN dbo.mststatus sts ON sts.StatusId = ve.ExpenseStatusId
     WHERE ve.EmpCode = :empCode
       AND ve.isActive = 1
-      AND ve.ExpenseStatusId = 2  -- ✅ Manager Approved
-      AND ve.ExpenseStatusChangeByHr = 1  -- ✅ HR Released (FINAL)
+      AND sts.Description = 'Approved'
       AND CAST(ve.createdAt AS DATE) BETWEEN :startDate AND :endDate
     ORDER BY ve.createdAt DESC
 `;
@@ -2054,13 +2038,6 @@ const generateDetailedExpenseReport = async (
             type: QueryTypes.SELECT,
         });
 
-        if (!expenses.length) {
-            res.status(400).json({
-                error: true,
-                message: "No HR released expenses found for the selected period"
-            });
-            return;
-        }
 
         const expenseMap = new Map<string, ExpenseTypeDetail>();
 
@@ -2122,6 +2099,7 @@ const generateDetailedExpenseReport = async (
 
         const reportData = Array.from(expenseMap.values());
 
+
         let grandTotal = 0;
         reportData.forEach(t => grandTotal += Number(t.totalAmount));
 
@@ -2151,13 +2129,15 @@ const generateDetailedExpenseReport = async (
 
         doc.moveDown(1);
 
-        // Employee Info
+        // Employee
         doc.fontSize(10).font("Helvetica")
             .text(`Employee Code:  ${employee.EMPCode}`, 50);
 
+        // sirf date bold
         doc.font("Helvetica-Bold")
             .text(`Date:  ${new Date().toLocaleDateString("en-GB")}`, 420);
 
+        // back to normal
         doc.font("Helvetica")
             .text(`Employee Name: ${employee.EmployeeName}`, 50);
 
@@ -2165,10 +2145,10 @@ const generateDetailedExpenseReport = async (
 
         doc.moveDown(0.6);
         doc.font("Helvetica-Bold")
-            .text(`✅ HR Released Expense Details for the Period: ${getMonthName(startDate.toString())}  to ${getMonthName(endDate.toString())}`);
+            .text(`Summarized Approved Expense Details for the Month of ${getMonthName(startDate.toString())}  to ${getMonthName(endDate.toString())}`);
         doc.moveDown(0.6);
 
-        // ================= TABLE =================
+        // ================= TABLE EXACT DESIGN =================
         const startX = 50;
         let y = doc.y;
 
@@ -2192,6 +2172,7 @@ const generateDetailedExpenseReport = async (
             const rows = exp.subtypes.length || 1;
             const blockHeight = rows * rowHeight;
 
+            // Left merged Expense Type block
             doc.rect(startX, y, col1, blockHeight).stroke();
             doc.text(exp.type, startX + 5, y + (blockHeight / 2) - 6);
 
@@ -2214,30 +2195,37 @@ const generateDetailedExpenseReport = async (
         doc.rect(startX + col1 + col2, y, col3, rowHeight).stroke();
         doc.text(Number(grandTotal).toString(), startX + col1 + col2 + 5, y + 6);
 
+
         doc.moveDown(1);
+
 
         doc.fontSize(10).font("Helvetica-Bold")
             .text(
-                `Total HR Released Expense for the Period: ${getMonthName(startDate.toString())}  to ${getMonthName(endDate.toString())} : ₹${grandTotal}`,
+                `Total Expense for the Period: ${getMonthName(startDate.toString())}  to ${getMonthName(endDate.toString())} : ${grandTotal}`,
                 startX,
                 doc.y + 5
             );
 
         doc.moveDown(3);
 
+
         const signY = doc.y;
         const lineWidth = 120;
 
         doc.fontSize(10).font("Helvetica");
 
+        // Created By
         doc.text("Created By:", startX, signY);
         doc.moveTo(startX + 80, signY + 12).lineTo(startX + 80 + lineWidth, signY + 12).stroke();
 
-        doc.text("Verified By HR:", startX + 220, signY);
-        doc.moveTo(startX + 320, signY + 12).lineTo(startX + 320 + lineWidth, signY + 12).stroke();
+        // Checked By
+        doc.text("Checked By:", startX + 220, signY);
+        doc.moveTo(startX + 300, signY + 12).lineTo(startX + 300 + lineWidth, signY + 12).stroke();
 
+        // Approved By
         doc.text("Approved By:", startX + 440, signY);
         doc.moveTo(startX + 525, signY + 12).lineTo(startX + 525 + lineWidth, signY + 12).stroke();
+
 
         doc.end();
         // ==================== PDF END ====================
@@ -2263,7 +2251,6 @@ const getMonthName = (dateString: string): string => {
     ];
     return monthNames[date.getMonth()] + "-" + date.getFullYear();
 };
-
 
 
 // Export Methods

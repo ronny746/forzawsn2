@@ -1860,25 +1860,17 @@ const generateExpensePdfWithWatermark = async (
             try {
                 docs = JSON.parse(expense.Expense_document);
             } catch {
-                console.log("Failed to parse Expense_document for expense:", expense.ExpenseReqId);
                 continue;
             }
 
             if (!Array.isArray(docs)) continue;
 
             docs.forEach((doc_item: any) => {
-                // ✅ Check both file and image - use whichever exists
-                const imageFile = doc_item.file || doc_item.image;
-
-                if (!imageFile) {
-                    console.log("No file or image found in doc_item:", doc_item);
-                    return;
-                }
+                if (!doc_item.file) return;
 
                 tasks.push((async () => {
                     try {
-                        const fileUrl = `${BASE_URL}${imageFile}`;
-                        console.log("Downloading image from:", fileUrl);
+                        const fileUrl = `${BASE_URL}${doc_item.file}`;
 
                         const resImg = await fastAxios.get(fileUrl);
                         let buffer: Buffer = Buffer.from(resImg.data as Buffer);
@@ -1887,7 +1879,6 @@ const generateExpensePdfWithWatermark = async (
                         let width = meta.width || 800;
                         let height = meta.height || 1000;
 
-                        // Compress if too large
                         if (width > 1800) {
                             buffer = await sharp(buffer)
                                 .resize(1800)
@@ -1917,10 +1908,8 @@ const generateExpensePdfWithWatermark = async (
                             height: finalMeta.height || height
                         });
 
-                        console.log("✅ Image processed successfully:", imageFile);
-
                     } catch (err) {
-                        console.log("❌ Image failed, skipping:", imageFile, err);
+                        console.log("Image failed, skipping", err);
                     }
                 })());
             });
@@ -1935,8 +1924,6 @@ const generateExpensePdfWithWatermark = async (
             });
             return;
         }
-
-        console.log(`✅ Total images processed: ${allImages.length}`);
 
         // Generate PDF
         const doc = new PDFDocument({ autoFirstPage: false });
@@ -1962,15 +1949,13 @@ const generateExpensePdfWithWatermark = async (
         }
 
         doc.end();
-        console.log("✅ PDF generated successfully");
-
     } catch (err) {
-        console.error("❌ PDF Generation Error:", err);
+        console.error(err);
         if (!res.headersSent) {
             res.status(500).json({
                 error: true,
                 message: "Failed to generate PDF",
-                details: err instanceof Error ? err.message : String(err)
+                details: err
             });
         }
         next(err);
