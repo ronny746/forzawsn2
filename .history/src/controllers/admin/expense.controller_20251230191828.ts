@@ -1754,7 +1754,7 @@ const addWatermarkToImage = async (
     x="${width - 520}" 
     y="20" 
     width="500" 
-    height="220" 
+    height="180" 
     rx="10"
     fill="rgba(0,0,0,0.45)"
   />
@@ -1775,8 +1775,8 @@ const addWatermarkToImage = async (
   <text x="${width - 30}" y="175" font-size="22" text-anchor="end" class="text">
     Amount: ₹${watermarkData.amount}
   </text>
-  <text x="${width - 30}" y="205" font-size="22" text-anchor="end" class="text">
-    Status: Approved
+  <text x="${width - 30}" y="175" font-size="22" text-anchor="end" class="text">
+    Status: Verified}
   </text>
 
 </svg>

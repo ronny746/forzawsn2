@@ -1751,7 +1751,7 @@ const addWatermarkToImage = async (
 
   <!-- Right Corner Black Transparent Box -->
   <rect 
-    x="${width - 520}" 
+    x="${width - 720}" 
     y="20" 
     width="500" 
     height="220" 

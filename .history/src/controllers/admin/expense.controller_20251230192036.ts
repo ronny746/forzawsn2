@@ -1753,7 +1753,7 @@ const addWatermarkToImage = async (
   <rect 
     x="${width - 520}" 
     y="20" 
-    width="500" 
+    width="00" 
     height="220" 
     rx="10"
     fill="rgba(0,0,0,0.45)"

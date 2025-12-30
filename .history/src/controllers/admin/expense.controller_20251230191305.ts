@@ -457,11 +457,11 @@ const getAllExpenseForHr = async (req: RequestType, res: Response, next: NextFun
         if (pageIndex == 0) {
             const rowsCount = await sequelize.query(query, {
                 replacements: {
-                    searchKey,
-                    EMPCode: req?.payload?.appUserId,
+                    searchKey, 
+                    EMPCode: req?.payload?.appUserId, 
                     searchEMPCode,
-                    startDate,
-                    endDate,
+                    startDate, 
+                    endDate, 
                     verifyType: "Approved"
                 },
                 type: QueryTypes.SELECT,
@@ -478,11 +478,11 @@ const getAllExpenseForHr = async (req: RequestType, res: Response, next: NextFun
 
         result.rows = await sequelize.query(query, {
             replacements: {
-                searchKey,
-                EMPCode: req?.payload?.appUserId,
+                searchKey, 
+                EMPCode: req?.payload?.appUserId, 
                 searchEMPCode,
-                startDate,
-                endDate,
+                startDate, 
+                endDate, 
                 verifyType: "Approved"
             },
             type: QueryTypes.SELECT,
@@ -493,13 +493,13 @@ const getAllExpenseForHr = async (req: RequestType, res: Response, next: NextFun
         let transformedData = { count: result.count, rows: [] };
         transformedData.rows = result.rows?.map((item: any) => {
             const parsedExpenseDocs = JSON.parse(item.Expense_document);
-            return {
-                ...item,
-                Expense_document: parsedExpenseDocs
+            return { 
+                ...item, 
+                Expense_document: parsedExpenseDocs 
             };
         });
 
-        res.status(200).send({
+        res.status(200).send({ 
             data: transformedData,
             filter: hrFilter || 'all',
             debug: {
@@ -916,7 +916,7 @@ const approveDisapproveClaim = async (req: RequestType, res: Response, next: Nex
                 ExpenseStatusChangeByHr = NULL  -- ✅ Reset HR flag
             WHERE ExpenseReqId = :ExpenseReqId
         `;
-
+        
         await sequelize.query(selectQuery, {
             replacements: {
                 ApprovedById: req?.payload?.appUserId,
@@ -936,7 +936,7 @@ const approveDisapproveClaim = async (req: RequestType, res: Response, next: Nex
                 reject_reason = :reject_reason
             WHERE ExpenseDocId = :ExpenseDocId
         `;
-
+        
         await sequelize.query(updateQuery, {
             replacements: {
                 ApprovedById: req?.payload?.appUserId,
@@ -955,7 +955,7 @@ const approveDisapproveClaim = async (req: RequestType, res: Response, next: Nex
             INNER JOIN dbo.visitsummary vs ON vs.VisitSummaryId = ve.VisitSummaryId 
             WHERE ed.ExpenseDocId = :ExpenseDocId
         `;
-
+        
         const docData: any = await sequelize.query(docQuery, {
             replacements: { ExpenseDocId },
             type: QueryTypes.SELECT,
@@ -1170,7 +1170,7 @@ const bulkApproveExpensesByIds = async (
                     doc.VisitTo,
                     isApprove,
                     doc.ExpenseReqId,
-
+                    
                 ).catch((err: any) => {
                     console.log("Email sending failed:", err);
                 })
@@ -1383,9 +1383,9 @@ const bulkHoldReleaseExpensesByHr = async (
         });
 
         if (!expenses.length) {
-            res.status(400).json({
-                error: true,
-                message: "No expenses found"
+            res.status(400).json({ 
+                error: true, 
+                message: "No expenses found" 
             });
             return;  // ✅ ADD RETURN
         }
@@ -1455,10 +1455,10 @@ const bulkHoldReleaseExpensesByHr = async (
         // Send emails in parallel (don't wait)
         const emailPromises: Promise<any>[] = allDocs.map((doc: any) =>
             sentRejectExpenseMailByHr(
-                doc.Email,
+                doc.Email, 
                 doc.Amount,
                 `${doc.FirstName} ${doc.LastName}`,
-                doc.VisitFrom,
+                doc.VisitFrom, 
                 doc.VisitTo,
                 !isRelease,  // true = Hold, false = Released
                 doc.ExpenseReqId
@@ -1481,7 +1481,7 @@ const bulkHoldReleaseExpensesByHr = async (
                 data: {
                     totalProcessed: expenses.length,
                     docsUpdated: allDocs.length,
-                    message: isRelease
+                    message: isRelease 
                         ? `✅ ${expenses.length} expense(s) RELEASED successfully!`
                         : `⏸️ ${expenses.length} expense(s) put on HOLD successfully!`,
                     details: {
@@ -1737,51 +1737,32 @@ const addWatermarkToImage = async (
         const width = metadata.width || 1000;
         const height = metadata.height || 800;
 
-
         const svg = `
-<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+      <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+        <style>
+          .text { fill:white; font-family: Arial; font-weight:bold; }
+        </style>
 
-  <style>
-    .text {
-      fill: white;
-      font-family: Arial;
-      font-weight: bold;
-    }
-  </style>
+        <!-- Transparent overlay (optional) -->
+        <rect width="${width}" height="180" fill="rgba(0,0,0,0.35)" />
 
-  <!-- Right Corner Black Transparent Box -->
-  <rect 
-    x="${width - 520}" 
-    y="20" 
-    width="500" 
-    height="220" 
-    rx="10"
-    fill="rgba(0,0,0,0.45)"
-  />
+        <text x="50%" y="50" font-size="28" text-anchor="middle" class="text">
+          📅 ${watermarkData.createdDate}
+        </text>
 
-  <!-- Text Group Right Aligned -->
-  <text x="${width - 30}" y="55" font-size="26" text-anchor="end" class="text">
-    📅 ${watermarkData.createdDate}
-  </text>
+        <text x="50%" y="90" font-size="22" text-anchor="middle" class="text">
+          Type: ${watermarkData.expenseType} | Mode: ${watermarkData.conveyanceMode}
+        </text>
 
-  <text x="${width - 30}" y="95" font-size="20" text-anchor="end" class="text">
-    Type: ${watermarkData.expenseType} | Mode: ${watermarkData.conveyanceMode}
-  </text>
+        <text x="50%" y="130" font-size="20" text-anchor="middle" class="text">
+          ${watermarkData.visitFrom} → ${watermarkData.visitTo}
+        </text>
 
-  <text x="${width - 30}" y="135" font-size="20" text-anchor="end" class="text">
-    ${watermarkData.visitFrom} → ${watermarkData.visitTo}
-  </text>
-
-  <text x="${width - 30}" y="175" font-size="22" text-anchor="end" class="text">
-    Amount: ₹${watermarkData.amount}
-  </text>
-  <text x="${width - 30}" y="205" font-size="22" text-anchor="end" class="text">
-    Status: Approved
-  </text>
-
-</svg>
-`;
-
+        <text x="50%" y="170" font-size="20" text-anchor="middle" class="text">
+          Amount: ₹${watermarkData.amount}
+        </text>
+      </svg>
+    `;
 
         return await sharp(imageBuffer)
             .composite([
@@ -2230,7 +2211,7 @@ const generateDetailedExpenseReport = async (
 
 
         doc.moveDown(1);
-
+       
 
         doc.fontSize(10).font("Helvetica-Bold")
             .text(

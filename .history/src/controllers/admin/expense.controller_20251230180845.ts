@@ -378,7 +378,7 @@ const getAllExpenseForHr = async (req: RequestType, res: Response, next: NextFun
         const pageSize: any = req.query.pageSize || 10;
         const startDate: any = req.query.startDate;
         const endDate: any = req.query.endDate;
-        const hrFilter: any = req.query.hrFilter; // 'pending', 'released', 'hold' या undefined for ALL
+        const expenseStatusChangeByHr = req.query.expenseStatusChangeByHr; // ✅ HR filter
         let searchEMPCode: any = req.query.EMPCode || req?.payload?.appUserId;
 
         if (req.query.EMPCode === "all") {
@@ -390,126 +390,122 @@ const getAllExpenseForHr = async (req: RequestType, res: Response, next: NextFun
 
         let filter_query = ``;
 
-        // ✅ HR Filter Logic - BASED ON ExpenseStatusChangeByHr (NOT ExpenseStatusId)
-        if (hrFilter === 'pending') {
-            // NULL = HR pending
-            filter_query = ` AND ve.ExpenseStatusChangeByHr IS NULL`;
-        } else if (hrFilter === 'released') {
-            // 1 = HR released/finalized
-            filter_query = ` AND ve.ExpenseStatusChangeByHr = 1`;
-        } else if (hrFilter === 'hold') {
-            // 0 = HR hold
-            filter_query = ` AND ve.ExpenseStatusChangeByHr = 0`;
-        }
-        // else: no filter = show all states
-
-        // Add date filtering
-        if (startDate && endDate) {
-            filter_query += ` AND CAST(ve.createdAt AS DATE) BETWEEN :startDate AND :endDate`;
-        }
-        if (searchEMPCode) {
-            filter_query += ` AND emp.EMPCode = :searchEMPCode`;
+        // ✅ HR Status Filter has PRIORITY
+        if (expenseStatusChangeByHr !== undefined && expenseStatusChangeByHr !== "" && expenseStatusChangeByHr !== null) {
+            // HR filter provided - use ONLY this
+            if (expenseStatusChangeByHr === "0") {
+                filter_query = ` AND ve.ExpenseStatusChangeByHr = 0`;
+            } else if (expenseStatusChangeByHr === "1") {
+                filter_query = ` AND ve.ExpenseStatusChangeByHr = 1`;
+            }
+        } else {
+            // No HR filter - apply other filters
+            // Add date filtering if provided
+            if (startDate && endDate) {
+                filter_query = `AND CAST(ve.createdAt AS DATE) BETWEEN :startDate AND :endDate`;
+            }
+            if (searchEMPCode) {
+                filter_query += ` AND emp.EMPCode=:searchEMPCode`;
+            }
+            // Default: HR pending (NULL values)
+            filter_query += ` AND ve.ExpenseStatusChangeByHr IS NULL`;
         }
 
         let result: any = { count: 0, rows: [] };
 
-        // ✅ CHANGE: Show expenses that Manager approved (ExpenseStatusId = 2)
-        // AND have NOT been rejected (Don't show ExpenseStatusId = 3 which are Manager rejected)
-        // The HR status filter (pending/released/hold) is based on ExpenseStatusChangeByHr, NOT ExpenseStatusId
-        let query: string = `
-            SELECT 
-                ve.*, 
-                vs.VisitFrom, 
-                vs.VisitTo, 
-                (SELECT CONCAT(emp.FirstName, ' ', emp.LastName) 
-                 FROM dbo.employeedetails emp WHERE emp.EMPCode = ve.ApprovedById) as ApprovedByName, 
-                (SELECT SUM(CAST(ed.Amount AS INT)) 
-                 FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType) as TotalApproveAmount,
-                emp.FirstName, 
-                emp.LastName,
-                emp.EMPCode, 
-                vs.VisitPurpose, 
-                em.ExpModeDesc, 
-                sts.Description as ExpenseStatus,
-                CASE 
-                    WHEN ve.ExpenseStatusChangeByHr IS NULL THEN 'Pending'
-                    WHEN ve.ExpenseStatusChangeByHr = 1 THEN 'Released'
-                    WHEN ve.ExpenseStatusChangeByHr = 0 THEN 'On Hold'
-                END as HrStatus
-            FROM 
-                dbo.visitexpense AS ve 
-                INNER JOIN dbo.visitsummary vs ON vs.VisitSummaryId = ve.VisitId 
-                INNER JOIN dbo.employeedetails emp ON emp.EMPCode = ve.EmpCode 
-                LEFT JOIN dbo.mstexpmode em ON em.ExpModeId = ve.expensemodeid
-                INNER JOIN dbo.mststatus sts ON sts.StatusId = ve.ExpenseStatusId 
-            WHERE 
-                (emp.FirstName LIKE :searchKey OR emp.LastName LIKE :searchKey OR emp.EMPCode LIKE :searchKey) 
-                AND ve.isActive = 1
-                AND ve.ExpenseStatusId IN (2, 3, 4)  -- ✅ CHANGED: 2=Manager Approved, 3=On Hold, 4=Released
-                ${filter_query}
-            ORDER BY ve.createdAt DESC
-        `;
+        let query: string;
+        query = `SELECT 
+            ve.*, 
+            vs.VisitFrom, 
+            vs.VisitTo, 
+            (SELECT CONCAT(emp.FirstName, ' ', emp.LastName) FROM dbo.employeedetails emp WHERE emp.EMPCode = ve.ApprovedById) as ApprovedByName, 
+            (SELECT SUM(CAST(ed.Amount AS INT)) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType) as TotalApproveAmount, 
+            emp.FirstName, 
+            emp.LastName,
+            emp.EMPCode, 
+            vs.VisitPurpose, 
+            em.ExpModeDesc, 
+            sts.Description as ExpenseStatus 
+        FROM 
+            dbo.visitexpense AS ve 
+            INNER JOIN dbo.visitsummary vs ON vs.VisitSummaryId = ve.VisitId 
+            INNER JOIN dbo.employeedetails emp ON emp.EMPCode = ve.EmpCode 
+            LEFT JOIN dbo.mstexpmode em ON em.ExpModeId = ve.expensemodeid
+            INNER JOIN dbo.mststatus sts ON sts.StatusId = ve.ExpenseStatusId 
+        WHERE 
+            (emp.FirstName LIKE :searchKey OR emp.LastName LIKE :searchKey OR emp.EMPCode LIKE :searchKey) 
+            AND ve.isActive = 1
+            ${filter_query}
+        ORDER BY ve.createdAt DESC`;
 
-        console.log("Query being executed:", query);
-        console.log("Filter query applied:", filter_query);
+        // Calculate row count if pageIndex is 0
+        if (pageIndex !== undefined && pageSize) {
+            if (pageIndex == 0) {
+                const rowsCount = await sequelize.query(query, {
+                    replacements: {
+                        searchKey: searchKey,
+                        EMPCode: req?.payload?.appUserId,
+                        searchEMPCode: searchEMPCode,
+                        startDate: startDate,
+                        endDate: endDate,
+                        verifyType: "Approved"
+                    },
+                    type: QueryTypes.SELECT,
+                });
+                result.count = rowsCount.length;
+            }
 
-        // Count rows
-        if (pageIndex == 0) {
-            const rowsCount = await sequelize.query(query, {
-                replacements: {
-                    searchKey,
-                    EMPCode: req?.payload?.appUserId,
-                    searchEMPCode,
-                    startDate,
-                    endDate,
-                    verifyType: "Approved"
-                },
-                type: QueryTypes.SELECT,
-            });
-            result.count = rowsCount.length;
-            console.log(`Total count for filter '${hrFilter}':`, result.count);
-        }
-
-        // Pagination
-        if (pageSize) {
+            // Calculate offset and limit for pagination
             const offset = pageSize * pageIndex;
             query = query + `\n OFFSET ${offset} ROWS FETCH NEXT ${pageSize} ROWS ONLY`;
         }
 
+        // Execute the query
         result.rows = await sequelize.query(query, {
             replacements: {
-                searchKey,
+                searchKey: searchKey,
                 EMPCode: req?.payload?.appUserId,
-                searchEMPCode,
-                startDate,
-                endDate,
+                searchEMPCode: searchEMPCode,
+                startDate: startDate,
+                endDate: endDate,
                 verifyType: "Approved"
             },
             type: QueryTypes.SELECT,
+        }).then((rows: any) => {
+            // ✅ Apply client-side filter as backup
+            let filtered = rows;
+            
+            if (expenseStatusChangeByHr !== undefined && expenseStatusChangeByHr !== "" && expenseStatusChangeByHr !== null) {
+                if (expenseStatusChangeByHr === "0") {
+                    filtered = rows.filter((item: any) => item.ExpenseStatusChangeByHr === 0);
+                } else if (expenseStatusChangeByHr === "1") {
+                    filtered = rows.filter((item: any) => item.ExpenseStatusChangeByHr === 1);
+                }
+            } else {
+                filtered = rows.filter((item: any) => item.ExpenseStatusChangeByHr === null);
+            }
+            
+            return filtered;
         });
 
-        console.log(`Retrieved ${result.rows.length} rows for filter '${hrFilter}'`);
-
-        let transformedData = { count: result.count, rows: [] };
+        // Transform the array
+        let transformedData = { count: 0, rows: [] };
+        transformedData.count = result.rows.length; // Update count after filtering
+        
         transformedData.rows = result.rows?.map((item: any) => {
+            // Parse the expenseDocs JSON string
             const parsedExpenseDocs = JSON.parse(item.Expense_document);
+
+            // Return a new object with the parsed data
             return {
                 ...item,
                 Expense_document: parsedExpenseDocs
             };
         });
 
-        res.status(200).send({
-            data: transformedData,
-            filter: hrFilter || 'all',
-            debug: {
-                totalRecords: result.count,
-                displayedRecords: result.rows.length,
-                filterApplied: hrFilter || 'all'
-            }
-        });
+        res.status(200).send({ data: transformedData });
     } catch (error: any) {
-        console.log("Error in getAllExpenseForHr:", error);
+        console.log(error);
         if (error?.isJoi === true) error.status = 422;
         next(error);
     }
@@ -905,90 +901,63 @@ const getExpenseById = async (req: RequestType, res: Response, next: NextFunctio
 const approveDisapproveClaim = async (req: RequestType, res: Response, next: NextFunction): Promise<void> => {
     try {
         const { ExpenseReqId, isApprove, rejectReason, ExpenseDocId } = req.body;
-
-        // Update visitexpense - Manager approval
-        const selectQuery = `
-            UPDATE dbo.visitexpense 
-            SET 
-                ExpenseStatusId = :ExpenseStatusId, 
-                ApprovedById = :ApprovedById, 
-                reject_reason = :reject_reason,
-                ExpenseStatusChangeByHr = NULL  -- ✅ Reset HR flag
-            WHERE ExpenseReqId = :ExpenseReqId
-        `;
-
-        await sequelize.query(selectQuery, {
+        // console.log(req.body, "req.body");
+        const selectQuery = 'UPDATE dbo.visitexpense SET ExpenseStatusId=:ExpenseStatusId, ApprovedById=:ApprovedById, reject_reason=:reject_reason where ExpenseReqId=:ExpenseReqId'
+        const results: any = await sequelize.query(selectQuery, {
             replacements: {
                 ApprovedById: req?.payload?.appUserId,
-                ExpenseStatusId: isApprove ? "2" : "3", // 2=Approved, 3=Rejected
+                ExpenseStatusId: isApprove ? "2" : "3",
                 ExpenseReqId: ExpenseReqId,
-                reject_reason: rejectReason || null
+                reject_reason: rejectReason
             },
             type: QueryTypes.UPDATE,
         });
 
-        // Update expensedocs
-        const updateQuery = `
-            UPDATE dbo.expensedocs 
-            SET 
-                isVerified = :isVerified, 
-                ApprovedById = :ApprovedById, 
-                reject_reason = :reject_reason
-            WHERE ExpenseDocId = :ExpenseDocId
-        `;
-
+        const updateQuery = 'UPDATE dbo.expensedocs SET isVerified=:isVerified, ApprovedById=:ApprovedById, reject_reason=:reject_reason where ExpenseDocId=:ExpenseDocId'
         await sequelize.query(updateQuery, {
             replacements: {
                 ApprovedById: req?.payload?.appUserId,
                 isVerified: isApprove ? "Approved" : "Rejected",
                 ExpenseDocId: ExpenseDocId,
-                reject_reason: rejectReason || null
+                reject_reason: rejectReason
             },
             type: QueryTypes.UPDATE,
         });
 
-        const docQuery = `
-            SELECT ed.*, emp.*, vs.* 
-            FROM dbo.visitexpense ve 
-            INNER JOIN dbo.expensedocs ed ON ed.ExpenseReqId = ve.ExpenseReqId 
-            INNER JOIN dbo.employeedetails emp ON emp.EMPCode = ve.EmpCode 
-            INNER JOIN dbo.visitsummary vs ON vs.VisitSummaryId = ve.VisitSummaryId 
-            WHERE ed.ExpenseDocId = :ExpenseDocId
-        `;
-
+        // const docQuery = 'SELECT ed.*, (select ve.* from dbo.visitexpense ve where ve.ExpenseReqId=ed.ExpenseReqId) FROM dbo.expensedocs ed INNER JOIN dbo.visitexpense ve on ve.ExpenseReqId=ve.ExpenseReqId INNER JOIN dbo.employeedetails emp on emp.EMPCode=ve.EmpCode where ed.ExpenseDocId = :ExpenseDocId';
+        const docQuery = 'SELECT ed.*, emp.*, vs.* FROM dbo.visitexpense ve INNER JOIN dbo.expensedocs ed on ed.ExpenseReqId=ve.ExpenseReqId INNER JOIN dbo.employeedetails emp on emp.EMPCode=ve.EmpCode INNER JOIN dbo.visitsummary vs on vs.VisitSummaryId=ve.VisitSummaryId where ed.ExpenseDocId = :ExpenseDocId';
         const docData: any = await sequelize.query(docQuery, {
-            replacements: { ExpenseDocId },
+            replacements: {
+                ExpenseDocId: ExpenseDocId,
+            },
             type: QueryTypes.SELECT,
         });
 
+        // console.log(docData, "docDAta");
         const docData1 = docData[0];
 
-        // ✅ Send email only if APPROVED (HR will send rejection emails)
-        if (isApprove) {
-            sentRejectExpenseMail(
-                docData1?.Email,
-                docData1?.Amount,
-                `${docData1?.FirstName} ${docData1?.LastName}`,
-                docData1.VisitFrom,
-                docData1?.VisitTo,
-                isApprove,
-                ExpenseReqId
-            );
-        }
 
-        if (!res.headersSent) {
+        // if (!isApprove) {
+        sentRejectExpenseMail(docData1?.Email, docData1?.Amount, docData1?.FirstName + ' ' + docData1?.LastName, docData1.VisitFrom, docData1?.VisitTo, isApprove, ExpenseReqId);
+        // }
+
+        if (res.headersSent === false) {
             res.status(200).send({
                 error: false,
-                data: { ExpenseReqId },
-                message: isApprove ? 'Expense approved. Sent to HR for review.' : 'Expense rejected.'
+                data: {
+                    data: results,
+                    ExpenseReqId: ExpenseReqId,
+                    message: 'Expense accept or reject successfully.'
+                }
             });
         }
     } catch (error: any) {
-        console.log(error, "Manager Approve/Reject Error");
+        console.log(error, "Approve or Reject Error")
         if (error?.isJoi === true) error.status = 422;
         next(error);
     }
 };
+
 
 interface BulkApproveByIdsRequest {
     expenseReqIds: string[]; // Array of ExpenseReqId
@@ -1170,7 +1139,7 @@ const bulkApproveExpensesByIds = async (
                     doc.VisitTo,
                     isApprove,
                     doc.ExpenseReqId,
-
+                    
                 ).catch((err: any) => {
                     console.log("Email sending failed:", err);
                 })
@@ -1247,90 +1216,107 @@ const bulkApproveExpensesByIds = async (
 };
 
 const approveDisapproveClaimByHr = async (req: RequestType, res: Response, next: NextFunction): Promise<void> => {
-    try {
-        const { ExpenseReqId, isRelease, holdReason, ExpenseDocId } = req.body;
+  try {
+    const { ExpenseReqId, isHold, holdReason, ExpenseDocId } = req.body;
 
-        // ✅ If isRelease = true → Mark as FINAL (ExpenseStatusChangeByHr = 1)
-        // ✅ If isRelease = false → Mark as HOLD (ExpenseStatusChangeByHr = 0)
+    // 🔥 If any doc is hold -> ExpenseStatusChangeByHr = 0 else 1
+    const expenseUpdateQuery = `
+      UPDATE dbo.visitexpense 
+      SET ExpenseStatusChangeByHr = :ExpenseStatusChangeByHr
+      WHERE ExpenseReqId = :ExpenseReqId
+    `;
 
-        const expenseUpdateQuery = `
-            UPDATE dbo.visitexpense 
-            SET 
-                ExpenseStatusChangeByHr = :ExpenseStatusChangeByHr,
-                ExpenseStatusId = :ExpenseStatusId
-            WHERE ExpenseReqId = :ExpenseReqId
-        `;
+    const results: any = await sequelize.query(expenseUpdateQuery, {
+      replacements: {
+        ExpenseStatusChangeByHr: isHold ? 0 : 1,
+        ExpenseReqId
+      },
+      type: QueryTypes.UPDATE,
+    });
 
-        await sequelize.query(expenseUpdateQuery, {
-            replacements: {
-                ExpenseStatusChangeByHr: isRelease ? 1 : 0,
-                ExpenseStatusId: isRelease ? 4 : 3,  // 4=Final/Approved by HR, 3=On Hold
-                ExpenseReqId
-            },
-            type: QueryTypes.UPDATE,
-        });
+    const updateQuery = `
+      UPDATE dbo.expensedocs 
+      SET verificationStatusByHr = :verificationStatusByHr,
+          StatusUpdatedByHrId = :StatusUpdatedByHrId,
+          hold_reason_by_hr = :hold_reason_by_hr
+      WHERE ExpenseDocId = :ExpenseDocId
+    `;
 
-        const updateQuery = `
-            UPDATE dbo.expensedocs 
-            SET 
-                verificationStatusByHr = :verificationStatusByHr,
-                StatusUpdatedByHrId = :StatusUpdatedByHrId,
-                hold_reason_by_hr = :hold_reason_by_hr
-            WHERE ExpenseDocId = :ExpenseDocId
-        `;
+    await sequelize.query(updateQuery, {
+      replacements: {
+        StatusUpdatedByHrId: req?.payload?.appUserId,
+        verificationStatusByHr: isHold ? "Hold" : "Release",
+        ExpenseDocId,
+        hold_reason_by_hr: holdReason || null
+      },
+      type: QueryTypes.UPDATE,
+    });
 
-        await sequelize.query(updateQuery, {
-            replacements: {
-                StatusUpdatedByHrId: req?.payload?.appUserId,
-                verificationStatusByHr: isRelease ? "Released" : "Hold",
-                ExpenseDocId,
-                hold_reason_by_hr: holdReason || null
-            },
-            type: QueryTypes.UPDATE,
-        });
+    const docQuery = `
+      SELECT ed.*, emp.*, vs.*
+      FROM dbo.visitexpense ve
+      INNER JOIN dbo.expensedocs ed ON ed.ExpenseReqId = ve.ExpenseReqId
+      INNER JOIN dbo.employeedetails emp ON emp.EMPCode = ve.EmpCode
+      INNER JOIN dbo.visitsummary vs ON vs.VisitSummaryId = ve.VisitSummaryId
+      WHERE ed.ExpenseDocId = :ExpenseDocId
+    `;
 
-        const docQuery = `
-            SELECT ed.*, emp.*, vs.* 
-            FROM dbo.visitexpense ve 
-            INNER JOIN dbo.expensedocs ed ON ed.ExpenseReqId = ve.ExpenseReqId 
-            INNER JOIN dbo.employeedetails emp ON emp.EMPCode = ve.EmpCode 
-            INNER JOIN dbo.visitsummary vs ON vs.VisitSummaryId = ve.VisitSummaryId 
-            WHERE ed.ExpenseDocId = :ExpenseDocId
-        `;
+    const docData: any = await sequelize.query(docQuery, {
+      replacements: { ExpenseDocId },
+      type: QueryTypes.SELECT,
+    });
 
-        const docData: any = await sequelize.query(docQuery, {
-            replacements: { ExpenseDocId },
-            type: QueryTypes.SELECT,
-        });
+    const docData1 = docData[0];
 
-        const docData1 = docData[0];
+    sentRejectExpenseMailByHr(
+      docData1?.Email,
+      docData1?.Amount,
+      `${docData1?.FirstName} ${docData1?.LastName}`,
+      docData1.VisitFrom,
+      docData1?.VisitTo,
+      isHold,
+      ExpenseReqId
+    );
 
-        // ✅ Send email
-        sentRejectExpenseMailByHr(
-            docData1?.Email,
-            docData1?.Amount,
-            `${docData1?.FirstName} ${docData1?.LastName}`,
-            docData1.VisitFrom,
-            docData1?.VisitTo,
-            !isRelease,  // true=Hold, false=Released
-            ExpenseReqId
-        );
-
-        if (!res.headersSent) {
-            res.status(200).send({
-                error: false,
-                data: { ExpenseReqId },
-                message: isRelease ? '✅ Expense FINALIZED and released to employee!' : '⏸️ Expense put on hold.'
-            });
+    if (!res.headersSent) {
+      res.status(200).send({
+        error: false,
+        data: {
+          data: results,
+          ExpenseReqId,
+          message: `Expense ${isHold ? 'holded' : 'release'} successfully.`
         }
-    } catch (error: any) {
-        console.log(error, "HR Approve/Reject Error");
-        if (error?.isJoi === true) error.status = 422;
-        next(error);
+      });
     }
+  } catch (error: any) {
+    console.log(error, "Approve or Reject Error");
+    if (error?.isJoi === true) error.status = 422;
+    next(error);
+  }
 };
 
 
+interface BulkHrHoldReleaseRequest {
+    expenseReqIds: string[]; // Array of ExpenseReqId
+    isHold: boolean; // true = Hold, false = Release
+    holdReason?: string; // Required if isHold = true
+}
+
+interface BulkHrHoldReleaseResult {
+    totalExpenses: number;
+    holdCount: number;
+    releaseCount: number;
+    failedCount: number;
+    approvalDetails: Array<{
+        ExpenseReqId: string;
+        EmployeeName: string;
+        EMPCode: string;
+        DocumentCount: number;
+        Amount: number;
+        Status: 'Success' | 'Failed';
+        Message: string;
+    }>;
+}
 
 const bulkHoldReleaseExpensesByHr = async (
     req: RequestType,
@@ -1338,43 +1324,55 @@ const bulkHoldReleaseExpensesByHr = async (
     next: NextFunction
 ): Promise<void> => {
     try {
-        const { expenseReqIds, isRelease, holdReason } = req.body;
+        const { expenseReqIds, isHold, holdReason } = req.body as BulkHrHoldReleaseRequest;
         const hrUserId = req?.payload?.appUserId;
 
-        // ✅ Validation with return
-        if (!expenseReqIds?.length || isRelease === undefined) {
+        // Validate required fields
+        if (!expenseReqIds || !Array.isArray(expenseReqIds) || expenseReqIds.length === 0) {
             res.status(400).json({
                 error: true,
-                message: "expenseReqIds array and isRelease flag required"
+                message: "expenseReqIds array is required and must contain at least one ID"
             });
-            return;  // ✅ ADD RETURN
+            return;
         }
 
-        // ✅ Validation with return
-        if (!isRelease && !holdReason) {
+        if (isHold === undefined) {
             res.status(400).json({
                 error: true,
-                message: "holdReason required when holding expenses"
+                message: "isHold is required"
             });
-            return;  // ✅ ADD RETURN
+            return;
         }
 
-        const placeholders = expenseReqIds.map((_: any, i: any) => `:id${i}`).join(',');
-        const queryReplacements: any = {};
+        // If holding, reason is required
+        if (isHold && !holdReason) {
+            res.status(400).json({
+                error: true,
+                message: "holdReason is required when holding expenses"
+            });
+            return;
+        }
+
+        // Get expense details for all provided IDs
+        const placeholders = expenseReqIds.map((_, i) => `:id${i}`).join(',');
+        const queryReplacements: any = { hrUserId };
         expenseReqIds.forEach((id: string, i: number) => {
             queryReplacements[`id${i}`] = id;
         });
 
-        // Get all expenses
         const getExpensesQuery = `
             SELECT 
-                ve.ExpenseReqId, ve.EmpCode,
+                ve.ExpenseReqId,
+                ve.EmpCode,
                 CONCAT(emp.FirstName, ' ', emp.LastName) as EmployeeName,
                 ve.amount as TotalAmount,
+                sts.Description as CurrentStatus,
                 (SELECT COUNT(*) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId) as DocumentCount
             FROM dbo.visitexpense ve
             INNER JOIN dbo.employeedetails emp ON emp.EMPCode = ve.EmpCode
-            WHERE ve.ExpenseReqId IN (${placeholders}) AND ve.isActive = 1
+            INNER JOIN dbo.mststatus sts ON sts.StatusId = ve.ExpenseStatusId
+            WHERE ve.ExpenseReqId IN (${placeholders})
+            AND ve.isActive = 1
         `;
 
         const expenses: any = await sequelize.query(getExpensesQuery, {
@@ -1385,17 +1383,22 @@ const bulkHoldReleaseExpensesByHr = async (
         if (!expenses.length) {
             res.status(400).json({
                 error: true,
-                message: "No expenses found"
+                message: "No expenses found for the provided IDs"
             });
-            return;  // ✅ ADD RETURN
+            return;
         }
 
-        // Get all docs
+        // Get all documents for all expenses in ONE query
         const allDocsQuery = `
             SELECT 
-                ed.ExpenseDocId, ed.ExpenseReqId, ed.Amount,
-                emp.Email, emp.FirstName, emp.LastName,
-                vs.VisitFrom, vs.VisitTo
+                ed.ExpenseDocId,
+                ed.ExpenseReqId,
+                ed.Amount,
+                emp.Email,
+                emp.FirstName,
+                emp.LastName,
+                vs.VisitFrom,
+                vs.VisitTo
             FROM dbo.expensedocs ed
             INNER JOIN dbo.visitexpense ve ON ve.ExpenseReqId = ed.ExpenseReqId
             INNER JOIN dbo.employeedetails emp ON emp.EMPCode = ve.EmpCode
@@ -1408,25 +1411,30 @@ const bulkHoldReleaseExpensesByHr = async (
             type: QueryTypes.SELECT,
         });
 
-        // Bulk update visitexpense
+        // Map documents by ExpenseReqId
+        const docsMap = new Map<string, any[]>();
+        allDocs.forEach((doc: any) => {
+            if (!docsMap.has(doc.ExpenseReqId)) {
+                docsMap.set(doc.ExpenseReqId, []);
+            }
+            docsMap.get(doc.ExpenseReqId)!.push(doc);
+        });
+
+        // Update visitexpense - set ExpenseStatusChangeByHr flag
         const expenseIdsToUpdate = expenseReqIds.map((id: string) => `'${id}'`).join(',');
         const bulkUpdateExpenseQuery = `
             UPDATE dbo.visitexpense 
             SET 
-                ExpenseStatusChangeByHr = :ExpenseStatusChangeByHr,
-                ExpenseStatusId = :ExpenseStatusId
+                ExpenseStatusChangeByHr = :ExpenseStatusChangeByHr
             WHERE ExpenseReqId IN (${expenseIdsToUpdate})
         `;
 
         await sequelize.query(bulkUpdateExpenseQuery, {
             replacements: {
-                ExpenseStatusChangeByHr: isRelease ? 1 : 0,
-                ExpenseStatusId: isRelease ? 4 : 3  // 4 = Final/Released, 3 = On Hold
+                ExpenseStatusChangeByHr: isHold ? 0 : 1   // 👈 if hold → 0, release → 1
             },
             type: QueryTypes.UPDATE,
         });
-
-        console.log(`✅ Updated ${expenseReqIds.length} expenses - ExpenseStatusChangeByHr: ${isRelease ? 1 : 0}`);
 
         // Bulk update expensedocs
         if (allDocs.length > 0) {
@@ -1442,63 +1450,102 @@ const bulkHoldReleaseExpensesByHr = async (
 
             await sequelize.query(bulkUpdateDocsQuery, {
                 replacements: {
-                    verificationStatusByHr: isRelease ? "Released" : "Hold",
+                    verificationStatusByHr: isHold ? "Hold" : "Release",
                     StatusUpdatedByHrId: hrUserId,
-                    hold_reason_by_hr: isRelease ? null : holdReason
+                    hold_reason_by_hr: isHold ? holdReason : null
                 },
                 type: QueryTypes.UPDATE,
             });
-
-            console.log(`✅ Updated ${allDocs.length} documents - Status: ${isRelease ? "Released" : "Hold"}`);
         }
 
-        // Send emails in parallel (don't wait)
-        const emailPromises: Promise<any>[] = allDocs.map((doc: any) =>
-            sentRejectExpenseMailByHr(
-                doc.Email,
-                doc.Amount,
-                `${doc.FirstName} ${doc.LastName}`,
-                doc.VisitFrom,
-                doc.VisitTo,
-                !isRelease,  // true = Hold, false = Released
-                doc.ExpenseReqId
-            ).catch((err: any) => {
-                console.log("Email failed for:", doc.Email, err);
-            })
-        );
+        // Send emails in parallel
+        const emailPromises: Promise<any>[] = [];
+        allDocs.forEach((doc: any) => {
+            emailPromises.push(
+                sentRejectExpenseMailByHr(
+                    doc.Email,
+                    doc.Amount,
+                    `${doc.FirstName} ${doc.LastName}`,
+                    doc.VisitFrom,
+                    doc.VisitTo,
+                    isHold, // true = Hold, false = Release
+                    doc.ExpenseReqId,
+                   
+                ).catch((err: any) => {
+                    console.log("Email sending failed:", err);
+                })
+            );
+        });
 
-        // Fire emails in background
+        // Send emails in background (don't wait for response)
         if (emailPromises.length > 0) {
-            Promise.all(emailPromises).catch(err => {
+            Promise.all(emailPromises).catch((err) => {
                 console.log("Some emails failed:", err);
             });
         }
 
-        // ✅ Immediate response
-        if (!res.headersSent) {
-            res.status(200).json({
-                error: false,
-                data: {
-                    totalProcessed: expenses.length,
-                    docsUpdated: allDocs.length,
-                    message: isRelease
-                        ? `✅ ${expenses.length} expense(s) RELEASED successfully!`
-                        : `⏸️ ${expenses.length} expense(s) put on HOLD successfully!`,
-                    details: {
-                        expenseIds: expenseReqIds,
-                        status: isRelease ? 'Released' : 'Hold',
-                        updatedAt: new Date().toISOString()
-                    }
+        // Build response
+        const approvalDetails: BulkHrHoldReleaseResult['approvalDetails'] = [];
+        let holdCount = 0;
+        let releaseCount = 0;
+        let failedCount = 0;
+
+        for (const expense of expenses) {
+            try {
+                const docs = docsMap.get(expense.ExpenseReqId) || [];
+                const statusText = isHold ? 'Hold' : 'Release';
+
+                approvalDetails.push({
+                    ExpenseReqId: expense.ExpenseReqId,
+                    EmployeeName: expense.EmployeeName,
+                    EMPCode: expense.EmpCode,
+                    DocumentCount: docs.length,
+                    Amount: expense.TotalAmount,
+                    Status: 'Success',
+                    Message: `Expense ${statusText} successfully (${docs.length} documents)`
+                });
+
+                if (isHold) {
+                    holdCount++;
+                } else {
+                    releaseCount++;
                 }
-            });
+            } catch (expenseError: any) {
+                console.log("Error processing expense:", expenseError);
+                failedCount++;
+                approvalDetails.push({
+                    ExpenseReqId: expense.ExpenseReqId,
+                    EmployeeName: expense.EmployeeName,
+                    EMPCode: expense.EmpCode,
+                    DocumentCount: 0,
+                    Amount: expense.TotalAmount,
+                    Status: 'Failed',
+                    Message: expenseError.message || 'Failed to process expense'
+                });
+            }
         }
 
+        const result: BulkHrHoldReleaseResult = {
+            totalExpenses: expenses.length,
+            holdCount,
+            releaseCount,
+            failedCount,
+            approvalDetails
+        };
+
+        res.status(200).json({
+            error: false,
+            data: result,
+            message: `Bulk ${isHold ? 'hold' : 'release'} completed: ${holdCount + releaseCount}/${expenses.length} expenses processed`
+        });
+
     } catch (error: any) {
-        console.log(error, "Bulk HR Error");
+        console.log(error, "Bulk HR Hold/Release Error");
         if (error?.isJoi === true) error.status = 422;
         next(error);
     }
 };
+
 
 const approveDisapproveClaimByFinance = async (req: RequestType, res: Response, next: NextFunction): Promise<void> => {
     try {
@@ -1737,51 +1784,32 @@ const addWatermarkToImage = async (
         const width = metadata.width || 1000;
         const height = metadata.height || 800;
 
-
         const svg = `
-<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+      <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+        <style>
+          .text { fill:white; font-family: Arial; font-weight:bold; }
+        </style>
 
-  <style>
-    .text {
-      fill: white;
-      font-family: Arial;
-      font-weight: bold;
-    }
-  </style>
+        <!-- Transparent overlay (optional) -->
+        <rect width="${width}" height="180" fill="rgba(0,0,0,0.35)" />
 
-  <!-- Right Corner Black Transparent Box -->
-  <rect 
-    x="${width - 520}" 
-    y="20" 
-    width="500" 
-    height="220" 
-    rx="10"
-    fill="rgba(0,0,0,0.45)"
-  />
+        <text x="50%" y="50" font-size="28" text-anchor="middle" class="text">
+          📅 ${watermarkData.createdDate}
+        </text>
 
-  <!-- Text Group Right Aligned -->
-  <text x="${width - 30}" y="55" font-size="26" text-anchor="end" class="text">
-    📅 ${watermarkData.createdDate}
-  </text>
+        <text x="50%" y="90" font-size="22" text-anchor="middle" class="text">
+          Type: ${watermarkData.expenseType} | Mode: ${watermarkData.conveyanceMode}
+        </text>
 
-  <text x="${width - 30}" y="95" font-size="20" text-anchor="end" class="text">
-    Type: ${watermarkData.expenseType} | Mode: ${watermarkData.conveyanceMode}
-  </text>
+        <text x="50%" y="130" font-size="20" text-anchor="middle" class="text">
+          ${watermarkData.visitFrom} → ${watermarkData.visitTo}
+        </text>
 
-  <text x="${width - 30}" y="135" font-size="20" text-anchor="end" class="text">
-    ${watermarkData.visitFrom} → ${watermarkData.visitTo}
-  </text>
-
-  <text x="${width - 30}" y="175" font-size="22" text-anchor="end" class="text">
-    Amount: ₹${watermarkData.amount}
-  </text>
-  <text x="${width - 30}" y="205" font-size="22" text-anchor="end" class="text">
-    Status: Approved
-  </text>
-
-</svg>
-`;
-
+        <text x="50%" y="170" font-size="20" text-anchor="middle" class="text">
+          Amount: ₹${watermarkData.amount}
+        </text>
+      </svg>
+    `;
 
         return await sharp(imageBuffer)
             .composite([
@@ -2230,7 +2258,7 @@ const generateDetailedExpenseReport = async (
 
 
         doc.moveDown(1);
-
+       
 
         doc.fontSize(10).font("Helvetica-Bold")
             .text(
