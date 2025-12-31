@@ -13,6 +13,8 @@ appUserDetailsRouterV1.post('/add-user', jwtModule.verifyAccessToken, appUserDet
 appUserDetailsRouterV1.get('/get-all-user', jwtModule.verifyAccessToken, appUserDetailsController.getAllUser);
 appUserDetailsRouterV1.post('/add-service-area', jwtModule.verifyAccessToken, appUserDetailsController.addServiceArea);
 appUserDetailsRouterV1.post('/add-designation', jwtModule.verifyAccessToken, appUserDetailsController.addDesignation);
+appUserDetailsRouterV1.post('/activate-designation', jwtModule.verifyAccessToken, appUserDetailsController.activateDesignation);
+appUserDetailsRouterV1.post('/delete-designation', jwtModule.verifyAccessToken, appUserDetailsController.deleteDesignation);
 appUserDetailsRouterV1.post('/update-user', jwtModule.verifyAccessToken, appUserDetailsController.appUpdateUser);
 appUserDetailsRouterV1.get('/get-dropdown-data', jwtModule.verifyAccessToken, appUserDetailsController.getAppDropDownData);
 appUserDetailsRouterV1.get('/get-state', jwtModule.verifyAccessToken, appUserDetailsController.getState);

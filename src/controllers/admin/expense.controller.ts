@@ -514,7 +514,6 @@ const getExportExpense = async (req: RequestType, res: Response, next: NextFunct
 
         let filter_query = ``;
 
-        // Add date filtering if provided
         if (startDate && endDate) {
             filter_query = `AND CAST(ve.createdAt AS DATE) BETWEEN :startDate AND :endDate`
         }
@@ -531,9 +530,28 @@ const getExportExpense = async (req: RequestType, res: Response, next: NextFunct
                 em.ExpModeDesc as ExpenseType,
                 ve.amount as Cost,
                 (SELECT CONCAT(emp.FirstName, ' ', emp.LastName) FROM dbo.employeedetails emp WHERE emp.EMPCode = ve.ApprovedById) as ApprovedByName,
-                (SELECT SUM(CAST(ed.Amount AS INT)) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType AND verificationStatusByHr = :verificationStatusByHr AND verificationStatusByFinance = :verificationStatusByFinance) as TotalApproveAmount,
-                (SELECT SUM(CAST(ed.Amount AS INT)) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType1 AND verificationStatusByHr = :verificationStatusByHr1 AND verificationStatusByFinance = :verificationStatusByFinance1) as TotalRejectAmount,
-                (SELECT SUM(CAST(ed.Amount AS INT)) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType2 AND verificationStatusByHr = :verificationStatusByHr2 AND verificationStatusByFinance = :verificationStatusByFinance2) as TotalPendingAmount,
+
+                (SELECT SUM(TRY_CONVERT(DECIMAL(18,2), ed.Amount)) 
+                 FROM dbo.expensedocs ed 
+                 WHERE ed.ExpenseReqId = ve.ExpenseReqId 
+                 AND ed.isVerified = :verifyType 
+                 AND verificationStatusByHr = :verificationStatusByHr 
+                 AND verificationStatusByFinance = :verificationStatusByFinance) as TotalApproveAmount,
+
+                (SELECT SUM(TRY_CONVERT(DECIMAL(18,2), ed.Amount)) 
+                 FROM dbo.expensedocs ed 
+                 WHERE ed.ExpenseReqId = ve.ExpenseReqId 
+                 AND ed.isVerified = :verifyType1 
+                 AND verificationStatusByHr = :verificationStatusByHr1 
+                 AND verificationStatusByFinance = :verificationStatusByFinance1) as TotalRejectAmount,
+
+                (SELECT SUM(TRY_CONVERT(DECIMAL(18,2), ed.Amount)) 
+                 FROM dbo.expensedocs ed 
+                 WHERE ed.ExpenseReqId = ve.ExpenseReqId 
+                 AND ed.isVerified = :verifyType2 
+                 AND verificationStatusByHr = :verificationStatusByHr2 
+                 AND verificationStatusByFinance = :verificationStatusByFinance2) as TotalPendingAmount,
+
                 (
                 SELECT 
                     ed.ApprovedById AS StatusUpdateByManagerId,
@@ -547,6 +565,7 @@ const getExportExpense = async (req: RequestType, res: Response, next: NextFunct
                     WHERE ed.ExpenseReqId = ve.ExpenseReqId 
                     FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
                 ) AS StatusUpdateData,
+
                 ve.ApprovedById,
                 FORMAT(ve.createdAt AT TIME ZONE 'UTC' AT TIME ZONE 'India Standard Time', 'dd-MM-yyyy') AS ExpenseDate, 
                 vs.VisitFrom,
@@ -576,9 +595,28 @@ const getExportExpense = async (req: RequestType, res: Response, next: NextFunct
                 em.ExpModeDesc as ExpenseType,
                 ve.amount as TotalAmount,
                 (SELECT CONCAT(emp.FirstName, ' ', emp.LastName) FROM dbo.employeedetails emp WHERE emp.EMPCode = ve.ApprovedById) as ApprovedByName,
-                (SELECT SUM(CAST(ed.Amount AS INT)) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType AND verificationStatusByHr = :verificationStatusByHr AND verificationStatusByFinance = :verificationStatusByFinance) as TotalApproveAmount,
-                (SELECT SUM(CAST(ed.Amount AS INT)) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType1 AND verificationStatusByHr = :verificationStatusByHr1 AND verificationStatusByFinance = :verificationStatusByFinance1) as TotalRejectAmount,
-                (SELECT SUM(CAST(ed.Amount AS INT)) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType2 AND verificationStatusByHr = :verificationStatusByHr2 AND verificationStatusByFinance = :verificationStatusByFinance2) as TotalPendingAmount,
+
+                (SELECT SUM(TRY_CONVERT(DECIMAL(18,2), ed.Amount)) 
+                 FROM dbo.expensedocs ed 
+                 WHERE ed.ExpenseReqId = ve.ExpenseReqId 
+                 AND ed.isVerified = :verifyType 
+                 AND verificationStatusByHr = :verificationStatusByHr 
+                 AND verificationStatusByFinance = :verificationStatusByFinance) as TotalApproveAmount,
+
+                (SELECT SUM(TRY_CONVERT(DECIMAL(18,2), ed.Amount)) 
+                 FROM dbo.expensedocs ed 
+                 WHERE ed.ExpenseReqId = ve.ExpenseReqId 
+                 AND ed.isVerified = :verifyType1 
+                 AND verificationStatusByHr = :verificationStatusByHr1 
+                 AND verificationStatusByFinance = :verificationStatusByFinance1) as TotalRejectAmount,
+
+                (SELECT SUM(TRY_CONVERT(DECIMAL(18,2), ed.Amount)) 
+                 FROM dbo.expensedocs ed 
+                 WHERE ed.ExpenseReqId = ve.ExpenseReqId 
+                 AND ed.isVerified = :verifyType2 
+                 AND verificationStatusByHr = :verificationStatusByHr2 
+                 AND verificationStatusByFinance = :verificationStatusByFinance2) as TotalPendingAmount,
+
                 (
                 SELECT 
                     ed.ApprovedById AS StatusUpdateByManagerId,
@@ -592,6 +630,7 @@ const getExportExpense = async (req: RequestType, res: Response, next: NextFunct
                     WHERE ed.ExpenseReqId = ve.ExpenseReqId
                     FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
                 ) AS StatusUpdateData,
+
                 ve.ApprovedById,
                 FORMAT(ve.createdAt AT TIME ZONE 'UTC' AT TIME ZONE 'India Standard Time', 'dd-MM-yyyy') AS ExpenseDate, 
                 vs.VisitFrom,
@@ -617,8 +656,8 @@ const getExportExpense = async (req: RequestType, res: Response, next: NextFunct
             replacements: {
                 searchKey: searchKey,
                 EMPCode: req?.payload?.appUserId,
-                startDate: startDate,
-                endDate: endDate,
+                startDate,
+                endDate,
                 verifyType: "Approved",
                 verificationStatusByHr: "Approved",
                 verificationStatusByFinance: "Approved",
@@ -718,6 +757,7 @@ const getExportExpenseHr = async (req: RequestType, res: Response, next: NextFun
                 CONCAT(emp.FirstName, ' ', emp.LastName) as Name,
                 em.ExpModeDesc as ExpenseType,
                 ve.amount as TotalAmount,
+                
                 (SELECT CONCAT(emp.FirstName, ' ', emp.LastName) FROM dbo.employeedetails emp WHERE emp.EMPCode = ve.ApprovedById) as ApprovedByName,
                 (SELECT SUM(CAST(ed.Amount AS INT)) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType AND verificationStatusByHr = :verificationStatusByHr AND verificationStatusByFinance = :verificationStatusByFinance) as TotalApproveAmount,
                 (SELECT SUM(CAST(ed.Amount AS INT)) FROM dbo.expensedocs ed WHERE ed.ExpenseReqId = ve.ExpenseReqId AND ed.isVerified = :verifyType1 AND verificationStatusByHr = :verificationStatusByHr1 AND verificationStatusByFinance = :verificationStatusByFinance1) as TotalRejectAmount,
@@ -1860,25 +1900,17 @@ const generateExpensePdfWithWatermark = async (
             try {
                 docs = JSON.parse(expense.Expense_document);
             } catch {
-                console.log("Failed to parse Expense_document for expense:", expense.ExpenseReqId);
                 continue;
             }
 
             if (!Array.isArray(docs)) continue;
 
             docs.forEach((doc_item: any) => {
-                // ✅ Check both file and image - use whichever exists
-                const imageFile = doc_item.file || doc_item.image;
-
-                if (!imageFile) {
-                    console.log("No file or image found in doc_item:", doc_item);
-                    return;
-                }
+                if (!doc_item.file) return;
 
                 tasks.push((async () => {
                     try {
-                        const fileUrl = `${BASE_URL}${imageFile}`;
-                        console.log("Downloading image from:", fileUrl);
+                        const fileUrl = `${BASE_URL}${doc_item.file}`;
 
                         const resImg = await fastAxios.get(fileUrl);
                         let buffer: Buffer = Buffer.from(resImg.data as Buffer);
@@ -1887,7 +1919,6 @@ const generateExpensePdfWithWatermark = async (
                         let width = meta.width || 800;
                         let height = meta.height || 1000;
 
-                        // Compress if too large
                         if (width > 1800) {
                             buffer = await sharp(buffer)
                                 .resize(1800)
@@ -1917,10 +1948,8 @@ const generateExpensePdfWithWatermark = async (
                             height: finalMeta.height || height
                         });
 
-                        console.log("✅ Image processed successfully:", imageFile);
-
                     } catch (err) {
-                        console.log("❌ Image failed, skipping:", imageFile, err);
+                        console.log("Image failed, skipping", err);
                     }
                 })());
             });
@@ -1935,8 +1964,6 @@ const generateExpensePdfWithWatermark = async (
             });
             return;
         }
-
-        console.log(`✅ Total images processed: ${allImages.length}`);
 
         // Generate PDF
         const doc = new PDFDocument({ autoFirstPage: false });
@@ -1962,15 +1989,13 @@ const generateExpensePdfWithWatermark = async (
         }
 
         doc.end();
-        console.log("✅ PDF generated successfully");
-
     } catch (err) {
-        console.error("❌ PDF Generation Error:", err);
+        console.error(err);
         if (!res.headersSent) {
             res.status(500).json({
                 error: true,
                 message: "Failed to generate PDF",
-                details: err instanceof Error ? err.message : String(err)
+                details: err
             });
         }
         next(err);

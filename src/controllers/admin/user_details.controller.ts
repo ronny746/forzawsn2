@@ -289,6 +289,91 @@ const addDesignation = async (req: RequestType, res: Response): Promise<void> =>
     }
 };
 
+const activateDesignation = async (req: RequestType, res: Response): Promise<void> => {
+  try {
+    const { DesigId } = req.body;
+
+    const checkQuery = `SELECT * FROM dbo.mstdesignatation WHERE DesigId = :DesigId AND Isactive = 0`;
+    const exists: any = await sequelize.query(checkQuery, {
+      replacements: { DesigId },
+      type: QueryTypes.SELECT
+    });
+
+    if (!exists.length) {
+       res.status(404).send({
+        error: true,
+        data: { message: "Designation not found or already active" }
+      });
+    }
+
+    const updateQuery = `
+      UPDATE dbo.mstdesignatation 
+      SET Isactive = 1 
+      WHERE DesigId = :DesigId
+    `;
+
+    await sequelize.query(updateQuery, {
+      replacements: { DesigId },
+      type: QueryTypes.UPDATE
+    });
+
+     res.status(200).send({
+      error: false,
+      data: { message: "Designation activated successfully" }
+    });
+
+  } catch (error) {
+    console.log("Activate Designation Error", error);
+     res.status(500).send({
+      error: true,
+      data: { message: "Internal server error" }
+    });
+  }
+};
+
+const deleteDesignation = async (req: RequestType, res: Response): Promise<void> => {
+  try {
+    const { DesigId } = req.body;
+
+    const checkQuery = `SELECT * FROM dbo.mstdesignatation WHERE DesigId = :DesigId AND Isactive = 1`;
+    const exists: any = await sequelize.query(checkQuery, {
+      replacements: { DesigId },
+      type: QueryTypes.SELECT
+    });
+
+    if (!exists.length) {
+       res.status(404).send({
+        error: true,
+        data: { message: "Designation not found or already inactive" }
+      });
+    }
+
+    const updateQuery = `
+      UPDATE dbo.mstdesignatation 
+      SET Isactive = 0 
+      WHERE DesigId = :DesigId
+    `;
+
+    await sequelize.query(updateQuery, {
+      replacements: { DesigId },
+      type: QueryTypes.UPDATE
+    });
+
+     res.status(200).send({
+      error: false,
+      data: { message: "Designation deactivated successfully" }
+    });
+
+  } catch (error) {
+    console.log("Delete Designation Error", error);
+     res.status(500).send({
+      error: true,
+      data: { message: "Internal server error" }
+    });
+  }
+};
+
+
 const appUpdateUser = async (req: RequestType, res: Response, next: NextFunction): Promise<void> => {
     try {
         const appUserDetails: AddAppUserType = await req.body
@@ -536,6 +621,8 @@ export {
     addServiceArea,
     addDesignation,
     getAppDropDownData,
+    deleteDesignation,
+    activateDesignation,
     uploadEmplyeeData,
     downloadTemplate,
     getUserDetailById,
