@@ -669,7 +669,7 @@ const getExportExpense = async (req: RequestType, res: Response, next: NextFunct
 // ✅ CORRECTED getExportExpenseHr - FOR HR
 const getExportExpenseHr = async (req: RequestType, res: Response, next: NextFunction): Promise<void> => {
     try {
-        
+        const DesigId = req?.payload?.DesigId;
         let searchKey: any = req.query.searchKey || '';
         const startDate: any = req.query.startDate;
         const endDate: any = req.query.endDate;

@@ -669,11 +669,10 @@ const getExportExpense = async (req: RequestType, res: Response, next: NextFunct
 // ✅ CORRECTED getExportExpenseHr - FOR HR
 const getExportExpenseHr = async (req: RequestType, res: Response, next: NextFunction): Promise<void> => {
     try {
-        
+        const DesigId = req?.payload?.DesigId;
         let searchKey: any = req.query.searchKey || '';
         const startDate: any = req.query.startDate;
         const endDate: any = req.query.endDate;
-        const empCode: any = req.query.empCode; // ✅ HR can specify which employee's report to get
 
         if (searchKey === "all") searchKey = '';
 
@@ -683,18 +682,76 @@ const getExportExpenseHr = async (req: RequestType, res: Response, next: NextFun
             filter_query = `AND CAST(ve.createdAt AS DATE) BETWEEN :startDate AND :endDate`
         }
 
-        // ✅ HR can see any employee's data
-        if (empCode) {
-            filter_query += ` AND emp.EMPCode = :empCode`
-        } else if (searchKey) {
+        if (searchKey) {
             filter_query += ` AND emp.EMPCode = :searchKey`
         }
 
         let result: any = { count: 0, rows: [] };
         let query: string;
 
-        // ✅ SAME QUERY FOR ALL HR USERS - No DesigId check
-        query = `
+        if (DesigId === '4') {
+            query = `
+        SELECT
+            emp.EMPCode as EmployeeId,
+            ve.ExpenseId as ExpenseId,
+            CONCAT(emp.FirstName, ' ', emp.LastName) as EmployeeName,
+            em.ExpModeDesc as ExpenseType,
+            ve.amount as TotalAmount,
+            (SELECT CONCAT(emp2.FirstName, ' ', emp2.LastName)
+                FROM dbo.employeedetails emp2 WHERE emp2.EMPCode = ve.ApprovedById) as ApprovedByName,
+
+            -- APPROVED BY FINANCE (Fully Approved by HR + Finance)
+            (SELECT ISNULL(SUM(CAST(ed.Amount AS DECIMAL(18,2))), 0)
+                FROM dbo.expensedocs ed
+                WHERE ed.ExpenseReqId = ve.ExpenseReqId 
+                AND ed.isVerified = 'Approved'
+                AND ed.verificationStatusByHr = 'Released'
+                AND ed.verificationStatusByFinance = 'Approved') as ApprovedByFinanceAmount,
+
+            -- REJECTED BY FINANCE
+            (SELECT ISNULL(SUM(CAST(ed.Amount AS DECIMAL(18,2))), 0)
+                FROM dbo.expensedocs ed
+                WHERE ed.ExpenseReqId = ve.ExpenseReqId 
+                AND ed.verificationStatusByFinance = 'Rejected') as RejectedByFinanceAmount,
+
+            -- ON HOLD BY FINANCE
+            (SELECT ISNULL(SUM(CAST(ed.Amount AS DECIMAL(18,2))), 0)
+                FROM dbo.expensedocs ed
+                WHERE ed.ExpenseReqId = ve.ExpenseReqId 
+                AND ed.verificationStatusByFinance = 'Hold') as HoldByFinanceAmount,
+
+            -- PENDING (Approved by Manager & HR, not yet reviewed by Finance)
+            (SELECT ISNULL(SUM(CAST(ed.Amount AS DECIMAL(18,2))), 0)
+                FROM dbo.expensedocs ed
+                WHERE ed.ExpenseReqId = ve.ExpenseReqId 
+                AND ed.isVerified = 'Approved'
+                AND ed.verificationStatusByHr = 'Released'
+                AND (ed.verificationStatusByFinance IS NULL OR ed.verificationStatusByFinance = 'InProgress')) as PendingByFinanceAmount,
+
+            FORMAT(ve.createdAt AT TIME ZONE 'UTC' AT TIME ZONE 'India Standard Time','dd-MM-yyyy') AS ExpenseDate,
+            vs.VisitFrom,
+            FORMAT(vs.VisitDate AT TIME ZONE 'UTC' AT TIME ZONE 'India Standard Time','dd-MM-yyyy') AS VisitDate,
+            vs.VisitTo,
+            vs.VisitPurpose as Purpose,
+            sts.Description as ManagerStatus,
+            CASE 
+                WHEN ve.ExpenseStatusChangeByHr = 1 THEN 'Released'
+                WHEN ve.ExpenseStatusChangeByHr = 0 THEN 'Hold'
+                ELSE 'Pending'
+            END as HrStatus
+        FROM dbo.visitexpense ve
+        INNER JOIN dbo.visitsummary vs ON vs.VisitSummaryId = ve.VisitId
+        INNER JOIN dbo.employeedetails emp ON emp.EMPCode = ve.EmpCode
+        LEFT JOIN dbo.mstexpmode em ON em.ExpModeId = ve.expensemodeid
+        INNER JOIN dbo.mststatus sts ON sts.StatusId = ve.ExpenseStatusId
+        WHERE ve.EmpCode = :EMPCode
+        AND ve.isActive = 1
+        AND ve.ExpenseStatusId = 2
+        ${filter_query}
+        ORDER BY ve.createdAt DESC
+      `;
+        } else {
+            query = `
         SELECT 
             emp.EMPCode as EmployeeId,
             ve.ExpenseId as ExpenseId,
@@ -748,16 +805,18 @@ const getExportExpenseHr = async (req: RequestType, res: Response, next: NextFun
         INNER JOIN dbo.employeedetails emp ON emp.EMPCode = ve.EmpCode
         LEFT JOIN dbo.mstexpmode em ON em.ExpModeId = ve.expensemodeid
         INNER JOIN dbo.mststatus sts ON sts.StatusId = ve.ExpenseStatusId
-        WHERE ve.isActive = 1
+        WHERE (emp.MgrEmployeeID = :EMPCode OR ve.EmpCode = :EMPCode)
+        AND ve.isActive = 1
         AND ve.ExpenseStatusId = 2
         ${filter_query}
         ORDER BY ve.createdAt DESC
       `;
+        }
 
         result.rows = await sequelize.query(query, {
             replacements: {
                 searchKey,
-                empCode,
+                EMPCode: req?.payload?.appUserId,
                 startDate,
                 endDate
             },
