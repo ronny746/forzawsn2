@@ -116,9 +116,10 @@ const getDashboardDetail = async (req: RequestType, res: Response): Promise<void
           COUNT(*) AS VisitCount
       FROM visitsummary vs
       INNER JOIN visitdetails ve ON vs.VisitId = ve.VisitId
-      ${isRestrictedUser
-        ? `WHERE ve.EmpCode = :userId AND YEAR(vs.VisitDate) = YEAR(GETDATE())`
-        : `WHERE YEAR(vs.VisitDate) = YEAR(GETDATE())`
+      ${
+        isRestrictedUser
+          ? `WHERE ve.EmpCode = :userId AND YEAR(vs.VisitDate) = YEAR(GETDATE())`
+          : `WHERE YEAR(vs.VisitDate) = YEAR(GETDATE())`
       }
       GROUP BY MONTH(vs.VisitDate)
       ORDER BY MonthNumber
@@ -156,8 +157,9 @@ const getExpenseAnalyticData = async (req: RequestType, res: Response): Promise<
     const isRestrictedUser = desigId === 3 || desigId === 4;
 
     const empJoin = `
-      INNER JOIN visitexpense ve
-      ON ed.ExpenseReqId = ve.ExpenseReqId`;
+      INNER JOIN visitexpense ve 
+      ON ed.VisitId = ve.VisitId
+    `;
 
     const empCondition = isRestrictedUser ? `AND ve.EmpCode = :userId` : ``;
 
@@ -240,67 +242,38 @@ const getExpenseAnalyticData = async (req: RequestType, res: Response): Promise<
 
 const getTodayLogData = async (req: RequestType, res: Response): Promise<void> => {
   try {
-    const empCode = req?.payload?.appUserId;
+    console.log(req?.payload?.appUserId, 'req?.payload?.appUserId');
 
-    // ==== Handle DesigId safely ====
-    const restrictedRoles = [3, 4];
-    let designationData: any[] = [];
-    const desigRaw = req?.payload?.DesigId;
-
-    if (Array.isArray(desigRaw)) {
-      designationData = desigRaw;
-    } else if (typeof desigRaw === "string") {
-      try {
-        designationData = JSON.parse(desigRaw);
-      } catch {
-        designationData = desigRaw ? [{ DesigId: Number(desigRaw) }] : [];
-      }
-    } else if (typeof desigRaw === "number") {
-      designationData = [{ DesigId: desigRaw }];
-    }
-
-    const isRestrictedUser = Array.isArray(designationData)
-      ? designationData.some((d: any) => restrictedRoles.includes(Number(d?.DesigId)))
-      : false;
-
-    // ========= Visits (Join needed to fetch EmpCode) =========
     let queryVisit = `
-      SELECT COUNT(vs.VisitSummaryId) AS TotalVisits
-      FROM dbo.visitsummary vs
-      INNER JOIN dbo.visitdetails vd ON vs.VisitId = vd.VisitId
-      WHERE CAST(vs.VisitDate AS DATE) = CAST(GETDATE() AS DATE)
-      ${isRestrictedUser ? `AND vd.EmpCode = :empCode` : ""}
+       SELECT COUNT(VisitSummaryId) AS TotalVisits
+       FROM dbo.visitsummary
+       WHERE CAST(VisitDate AS DATE) = CAST(GETDATE() AS DATE)
     `;
 
-    // ========= Expense (visitexpense already has EmpCode) =========
     let queryExpense = `
       SELECT COUNT(ve.ExpenseReqId) AS TotalExpenses
       FROM dbo.visitexpense ve
       WHERE CAST(ve.createdAt AS DATE) = CAST(GETDATE() AS DATE)
-      ${isRestrictedUser ? `AND ve.EmpCode = :empCode` : ""}
     `;
 
-    // ========= Attendance =========
     let queryAttendence = `
       SELECT COUNT(atd.id) AS TotalAttendenceLogs
-      FROM dbo.markattendance atd
-      WHERE CAST(atd.createdAt AS DATE) = CAST(GETDATE() AS DATE)
-      AND atd.CheckIn = 1
-      ${isRestrictedUser ? `AND atd.EmpCode = :empCode` : ""}
+        FROM dbo.markattendance atd
+        WHERE CAST(atd.createdAt AS DATE) = CAST(GETDATE() AS DATE) AND atd.CheckIn = 1
     `;
 
     const resultVisit: any = await sequelize.query(queryVisit, {
-      replacements: { empCode },
+      replacements: {},
       type: QueryTypes.SELECT
     });
 
     const resultExpense: any = await sequelize.query(queryExpense, {
-      replacements: { empCode },
+      replacements: {},
       type: QueryTypes.SELECT
     });
 
     const resultAttendence: any = await sequelize.query(queryAttendence, {
-      replacements: { empCode },
+      replacements: {},
       type: QueryTypes.SELECT
     });
 
@@ -311,9 +284,8 @@ const getTodayLogData = async (req: RequestType, res: Response): Promise<void> =
       totalExpenses: resultExpense[0]?.TotalExpenses || 0,
       totalAttendenceLogs: resultAttendence[0]?.TotalAttendenceLogs || 0
     });
-
   } catch (error: any) {
-    console.log(error, 'getTodayLogData error');
+    console.log(error, 'get user error');
     res.status(500).send({ message: 'Internal server error' });
   }
 };

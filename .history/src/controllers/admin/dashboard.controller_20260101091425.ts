@@ -82,143 +82,116 @@ const appUserDetail = async (req: RequestType, res: Response): Promise<void> => 
 
 const getDashboardDetail = async (req: RequestType, res: Response): Promise<void> => {
   try {
-    const userId = req?.payload?.appUserId;
+    console.log(req?.payload?.appUserId, 'req?.payload?.appUserId');
 
-    // ---------- SAFE DESIGNATION ----------
-    const desigId = Number(req?.payload?.DesigId || 0);
-
-    // Manager(3) + Executive(4) → only self data
-    const isRestrictedUser = desigId === 3 || desigId === 4;
-
-    // Dynamic WHERE
-    const empFilter = isRestrictedUser ? "WHERE ve.EmpCode = :userId" : "";
-
-    // ========= Overall Counts =========
-    const query = `
-      SELECT 
-          COUNT(*) AS total_visits,
-          SUM(CASE WHEN vs.isPlanned = 1 THEN 1 ELSE 0 END) AS planned_visits,
-          SUM(CASE WHEN vs.isPlanned = 0 THEN 1 ELSE 0 END) AS unplanned_visits
-      FROM visitsummary vs
-      INNER JOIN visitdetails ve ON vs.VisitId = ve.VisitId
-      ${empFilter}
-    `;
+    let query = `
+            SELECT 
+                COUNT(*) AS total_visits, -- Count all visits
+                SUM(CASE WHEN isPlanned = 1 THEN 1 ELSE 0 END) AS planned_visits, -- Count visits where isPlanned = 1
+                SUM(CASE WHEN isPlanned = 0 THEN 1 ELSE 0 END) AS unplanned_visits -- Count visits where isPlanned = 0
+            FROM 
+                dbo.visitsummary;
+        `;
 
     const result: any = await sequelize.query(query, {
-      replacements: { userId },
+      replacements: {},
       type: QueryTypes.SELECT
     });
 
-    // ========= Month Wise Count =========
     const query1 = `
-      SELECT
-          MONTH(vs.VisitDate) AS MonthNumber,
-          COUNT(*) AS VisitCount
-      FROM visitsummary vs
-      INNER JOIN visitdetails ve ON vs.VisitId = ve.VisitId
-      ${isRestrictedUser
-        ? `WHERE ve.EmpCode = :userId AND YEAR(vs.VisitDate) = YEAR(GETDATE())`
-        : `WHERE YEAR(vs.VisitDate) = YEAR(GETDATE())`
-      }
-      GROUP BY MONTH(vs.VisitDate)
-      ORDER BY MonthNumber
-    `;
-
+        SELECT
+        MONTH([VisitDate]) AS MonthNumber,
+        COUNT(*) AS VisitCount
+    FROM
+        visitsummary
+    WHERE
+        YEAR([VisitDate]) = YEAR(GETDATE()) -- Filters for the current year
+    GROUP BY
+        MONTH([VisitDate])
+    ORDER BY
+        MonthNumber;`;
     const result1: any = await sequelize.query(query1, {
-      replacements: { userId },
       type: QueryTypes.SELECT
     });
 
-    let visitCounts = Array(12).fill(0);
-    result1.forEach((row: any) => {
-      visitCounts[row.MonthNumber - 1] = row.VisitCount;
-    });
+    let visitCounts = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    for (let i = 0; i < result1.length; i++) {
+      visitCounts[result1[i]?.MonthNumber - 1] = result1[i]?.VisitCount;
+    }
 
     res.status(200).send({
-      total_visits: result[0]?.total_visits || 0,
-      planned_visits: result[0]?.planned_visits || 0,
-      unplanned_visits: result[0]?.unplanned_visits || 0,
-      visitCounts
+      total_visits: result[0].total_visits,
+      planned_visits: result[0].planned_visits,
+      unplanned_visits: result[0].unplanned_visits,
+      visitCounts: visitCounts
     });
-
-  } catch (error) {
-    console.log(error, "getDashboardDetail error");
-    res.status(500).send({ message: "Internal server error" });
+  } catch (error: any) {
+    console.log(error, 'get user error');
+    res.status(401).send({ message: 'Internal server error' });
   }
 };
 
-
 const getExpenseAnalyticData = async (req: RequestType, res: Response): Promise<void> => {
   try {
-    const userId = req?.payload?.appUserId;
+    console.log(req?.payload?.appUserId, 'req?.payload?.appUserId');
 
-    const desigId = Number(req?.payload?.DesigId || 0);
-    const isRestrictedUser = desigId === 3 || desigId === 4;
-
-    const empJoin = `
-      INNER JOIN visitexpense ve
-      ON ed.ExpenseReqId = ve.ExpenseReqId`;
-
-    const empCondition = isRestrictedUser ? `AND ve.EmpCode = :userId` : ``;
-
-    // ---------- TOTAL ----------
-    const queryTotal = `
+    let queryTotal = `
       SELECT SUM(ISNULL(TRY_CAST(ed.Amount AS DECIMAL(18,2)), 0)) AS TotalAmount
       FROM dbo.expensedocs ed
-      ${empJoin}
-      ${isRestrictedUser ? `WHERE ve.EmpCode = :userId` : ``}
     `;
 
-    // ---------- APPROVED ----------
-    const queryApprove = `
+    let queryApprove = `
       SELECT SUM(ISNULL(TRY_CAST(ed.Amount AS DECIMAL(18,2)), 0)) AS TotalApproveAmount
       FROM dbo.expensedocs ed
-      ${empJoin}
-      WHERE ed.isVerified = 'Approved'
-      AND verificationStatusByHr = 'Approved'
-      AND verificationStatusByFinance = 'Approved'
-      ${empCondition}
+      WHERE ed.isVerified = :verifyType
+      AND verificationStatusByHr = :verificationStatusByHr
+      AND verificationStatusByFinance = :verificationStatusByFinance
     `;
 
-    // ---------- REJECTED ----------
-    const queryReject = `
+    let queryReject = `
       SELECT SUM(ISNULL(TRY_CAST(ed.Amount AS DECIMAL(18,2)), 0)) AS TotalRejectAmount
       FROM dbo.expensedocs ed
-      ${empJoin}
-      WHERE ed.isVerified = 'Rejected'
-      AND verificationStatusByHr = 'Rejected'
-      AND verificationStatusByFinance = 'Rejected'
-      ${empCondition}
+      WHERE ed.isVerified = :verifyType1
+      AND verificationStatusByHr = :verificationStatusByHr1
+      AND verificationStatusByFinance = :verificationStatusByFinance1
     `;
 
-    // ---------- IN PROGRESS ----------
-    const queryProgress = `
+    let queryProgress = `
       SELECT SUM(ISNULL(TRY_CAST(ed.Amount AS DECIMAL(18,2)), 0)) AS TotalPendingAmount
       FROM dbo.expensedocs ed
-      ${empJoin}
-      WHERE ed.isVerified = 'InProgress'
-      AND verificationStatusByHr = 'InProgress'
-      AND verificationStatusByFinance = 'InProgress'
-      ${empCondition}
+      WHERE ed.isVerified = :verifyType2
+      AND verificationStatusByHr = :verificationStatusByHr2
+      AND verificationStatusByFinance = :verificationStatusByFinance2
     `;
 
     const resultTotal: any = await sequelize.query(queryTotal, {
-      replacements: { userId },
-      type: QueryTypes.SELECT
-    });
-
-    const resultApprove: any = await sequelize.query(queryApprove, {
-      replacements: { userId },
-      type: QueryTypes.SELECT
-    });
-
-    const resultReject: any = await sequelize.query(queryReject, {
-      replacements: { userId },
       type: QueryTypes.SELECT
     });
 
     const resultProgress: any = await sequelize.query(queryProgress, {
-      replacements: { userId },
+      replacements: {
+        verifyType2: 'InProgress',
+        verificationStatusByHr2: 'InProgress',
+        verificationStatusByFinance2: 'InProgress'
+      },
+      type: QueryTypes.SELECT
+    });
+
+    const resultApprove: any = await sequelize.query(queryApprove, {
+      replacements: {
+        verifyType: 'Approved',
+        verificationStatusByHr: 'Approved',
+        verificationStatusByFinance: 'Approved'
+      },
+      type: QueryTypes.SELECT
+    });
+
+    const resultReject: any = await sequelize.query(queryReject, {
+      replacements: {
+        verifyType1: 'Rejected',
+        verificationStatusByHr1: 'Rejected',
+        verificationStatusByFinance1: 'Rejected'
+      },
       type: QueryTypes.SELECT
     });
 
@@ -230,77 +203,46 @@ const getExpenseAnalyticData = async (req: RequestType, res: Response): Promise<
       approveData: resultApprove[0]?.TotalApproveAmount || 0,
       rejectData: resultReject[0]?.TotalRejectAmount || 0
     });
-
-  } catch (error) {
-    console.log(error, 'getExpenseAnalyticData error');
+  } catch (error: any) {
+    console.log(error, 'get user error');
     res.status(500).send({ message: 'Internal server error' });
   }
 };
 
-
 const getTodayLogData = async (req: RequestType, res: Response): Promise<void> => {
   try {
-    const empCode = req?.payload?.appUserId;
+    console.log(req?.payload?.appUserId, 'req?.payload?.appUserId');
 
-    // ==== Handle DesigId safely ====
-    const restrictedRoles = [3, 4];
-    let designationData: any[] = [];
-    const desigRaw = req?.payload?.DesigId;
-
-    if (Array.isArray(desigRaw)) {
-      designationData = desigRaw;
-    } else if (typeof desigRaw === "string") {
-      try {
-        designationData = JSON.parse(desigRaw);
-      } catch {
-        designationData = desigRaw ? [{ DesigId: Number(desigRaw) }] : [];
-      }
-    } else if (typeof desigRaw === "number") {
-      designationData = [{ DesigId: desigRaw }];
-    }
-
-    const isRestrictedUser = Array.isArray(designationData)
-      ? designationData.some((d: any) => restrictedRoles.includes(Number(d?.DesigId)))
-      : false;
-
-    // ========= Visits (Join needed to fetch EmpCode) =========
     let queryVisit = `
-      SELECT COUNT(vs.VisitSummaryId) AS TotalVisits
-      FROM dbo.visitsummary vs
-      INNER JOIN dbo.visitdetails vd ON vs.VisitId = vd.VisitId
-      WHERE CAST(vs.VisitDate AS DATE) = CAST(GETDATE() AS DATE)
-      ${isRestrictedUser ? `AND vd.EmpCode = :empCode` : ""}
+       SELECT COUNT(VisitSummaryId) AS TotalVisits
+       FROM dbo.visitsummary
+       WHERE CAST(VisitDate AS DATE) = CAST(GETDATE() AS DATE)
     `;
 
-    // ========= Expense (visitexpense already has EmpCode) =========
     let queryExpense = `
       SELECT COUNT(ve.ExpenseReqId) AS TotalExpenses
       FROM dbo.visitexpense ve
       WHERE CAST(ve.createdAt AS DATE) = CAST(GETDATE() AS DATE)
-      ${isRestrictedUser ? `AND ve.EmpCode = :empCode` : ""}
     `;
 
-    // ========= Attendance =========
     let queryAttendence = `
       SELECT COUNT(atd.id) AS TotalAttendenceLogs
-      FROM dbo.markattendance atd
-      WHERE CAST(atd.createdAt AS DATE) = CAST(GETDATE() AS DATE)
-      AND atd.CheckIn = 1
-      ${isRestrictedUser ? `AND atd.EmpCode = :empCode` : ""}
+        FROM dbo.markattendance atd
+        WHERE CAST(atd.createdAt AS DATE) = CAST(GETDATE() AS DATE) AND atd.CheckIn = 1
     `;
 
     const resultVisit: any = await sequelize.query(queryVisit, {
-      replacements: { empCode },
+      replacements: {},
       type: QueryTypes.SELECT
     });
 
     const resultExpense: any = await sequelize.query(queryExpense, {
-      replacements: { empCode },
+      replacements: {},
       type: QueryTypes.SELECT
     });
 
     const resultAttendence: any = await sequelize.query(queryAttendence, {
-      replacements: { empCode },
+      replacements: {},
       type: QueryTypes.SELECT
     });
 
@@ -311,9 +253,8 @@ const getTodayLogData = async (req: RequestType, res: Response): Promise<void> =
       totalExpenses: resultExpense[0]?.TotalExpenses || 0,
       totalAttendenceLogs: resultAttendence[0]?.TotalAttendenceLogs || 0
     });
-
   } catch (error: any) {
-    console.log(error, 'getTodayLogData error');
+    console.log(error, 'get user error');
     res.status(500).send({ message: 'Internal server error' });
   }
 };
