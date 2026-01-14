@@ -48,19 +48,6 @@ hrModuleBackendApp.use(
     },
   })
 );
-  
-hrModuleBackendApp.use(
-  cors({
-    origin: [
-      'https://wsn3.workgateway.in',
-      'https://www.wsn3.workgateway.in',
-    ],
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-  })
-);
-
 
 hrModuleBackendApp.use(express.json());
 hrModuleBackendApp.use(express.urlencoded({ extended: true }));
