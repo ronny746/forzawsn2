@@ -57,8 +57,13 @@ hrModuleBackendApp.use(
 );
 
 hrModuleBackendApp.use('/public', express.static(path.join(__dirname, '../../wsn3.workgateway.in/public')));
-
-hrModuleBackendApp.use(function (_req, res, next): void {
+hrModuleBackendApp.use(function (_req, res, next) {
+  res.header('Content-Type', 'application/json;charset=UTF-8');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  next();
+});
+hrModuleBackendApp.use(function (_req, res, next) {
   res.header('Content-Type', 'application/json;charset=UTF-8');
   res.header('Access-Control-Allow-Origin', _req.headers.origin || '*');
   res.header('Access-Control-Allow-Credentials', 'true');
@@ -68,12 +73,10 @@ hrModuleBackendApp.use(function (_req, res, next): void {
   
   // Preflight request को handle करो
   if (_req.method === 'OPTIONS') {
-    res.sendStatus(200);
-    return;
+    return res.sendStatus(200);
   }
   next();
 });
-
 
 
 // Serve static files from the "public" directory
