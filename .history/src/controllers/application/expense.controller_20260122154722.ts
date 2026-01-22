@@ -892,7 +892,6 @@ const updateExpense = async (req: RequestType, res: Response): Promise<void> => 
                 ExpenseStatusId = 1,
                 reject_reason = NULL,
                 ApprovedById = NULL,
-                ExpenseStatusChangeByHr = NULL,
                 updatedAt = GETDATE()
             WHERE ExpenseReqId = :ExpenseReqId
         `;
