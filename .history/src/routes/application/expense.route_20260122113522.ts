@@ -18,6 +18,6 @@ appClaimRouterV1.get('/get-expense-amount', appExpenseController.getExpenseAmoun
 appClaimRouterV1.get('/get-expense', jwtModule.verifyApplicationAccessToken, appExpenseController.getAllExpense);
 appClaimRouterV1.get('/get-expense-list', jwtModule.verifyApplicationAccessToken, appExpenseController.getAllExpenseList);
 appClaimRouterV1.post('/upload-expense-doc', jwtModule.verifyAccessToken, upload0.single('file'), appExpenseController.uploadExpenseDoc);
-appClaimRouterV1.put('/update-expense', jwtModule.verifyApplicationAccessToken, appExpenseController.updateExpense);
+router.put('/update-expense', authenticateToken, updateExpense);
 
 export { appClaimRouterV1 };

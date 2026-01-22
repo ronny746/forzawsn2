@@ -1016,6 +1016,5 @@ export {
     updateConvModeRate,
     expMstModeAdd,
     expMstModeUpdateByDesc,
-    getExpenseAmount,
-     updateExpense
+    getExpenseAmount
 };

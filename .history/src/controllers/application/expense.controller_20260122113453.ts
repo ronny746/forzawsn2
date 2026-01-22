@@ -827,29 +827,15 @@ const updateExpense = async (req: RequestType, res: Response): Promise<void> => 
             return;
         }
 
-        // ✅ Check expense status - Only Pending(1), Rejected(3), and HR Hold(2 with ExpenseStatusChangeByHr=0) can be updated
+        // ✅ Check if expense is already approved/rejected
         const expenseStatus = existingExpense[0].ExpenseStatusId;
-        const hrStatus = existingExpense[0].ExpenseStatusChangeByHr;
-        
-        // Status 2 = Approved
-        if (expenseStatus === 2) {
-            // Check HR status
-            // 0 = Hold by HR (Can update)
-            // 1 = Approved by HR (Cannot update)
-            // null = Pending from HR (Can update)
-            if (hrStatus === 1) {
-                res.status(400).json({
-                    error: true,
-                    message: "Cannot update approved expense. HR has already approved this expense."
-                });
-                return;
-            }
-            // If hrStatus is 0 (Hold) or null (Pending), allow update
+        if (expenseStatus === 2 || expenseStatus === 3) {
+            res.status(400).json({
+                error: true,
+                message: "Cannot update expense that is already approved or rejected"
+            });
+            return;
         }
-        
-        // Status 3 = Rejected - Can update (to resubmit)
-        // Status 1 = Pending - Can update
-        // Status 2 with hrStatus 0 or null - Can update (HR Hold/Pending)
 
         // ✅ Validate images for specific expense modes
         if ((!Data || Data.length === 0 || !Data[0].image) && 
@@ -878,7 +864,6 @@ const updateExpense = async (req: RequestType, res: Response): Promise<void> => 
         }
 
         // ✅ Update expense in visitexpense table
-        // Reset status to Pending(1) when updating rejected expense
         const updateExpenseQuery = `
             UPDATE dbo.visitexpense 
             SET 
@@ -889,9 +874,6 @@ const updateExpense = async (req: RequestType, res: Response): Promise<void> => 
                 Expense_document = :ExpenseDocument,
                 Rate = :Rate,
                 Reason = :Reason,
-                ExpenseStatusId = 1,
-                reject_reason = NULL,
-                ApprovedById = NULL,
                 updatedAt = GETDATE()
             WHERE ExpenseReqId = :ExpenseReqId
         `;
@@ -926,11 +908,6 @@ const updateExpense = async (req: RequestType, res: Response): Promise<void> => 
             if (!item.image) return;
 
             const id = uuidv4();
-            
-            // Truncate image name to 255 characters (or your column limit)
-            const truncatedImageName = item.image.length > 255 
-                ? item.image.substring(0, 255) 
-                : item.image;
 
             const insertQuery = `
                 INSERT INTO dbo.expensedocs 
@@ -942,7 +919,7 @@ const updateExpense = async (req: RequestType, res: Response): Promise<void> => 
                 ExpenseDocId: id,
                 ExpenseReqId: ExpenseReqId,
                 Amount: item.amount || 0,
-                imageName: truncatedImageName,
+                imageName: item.image,
                 isVerified: "InProgress",
                 isActive: 1,
                 deviceType: 'web'
@@ -989,6 +966,63 @@ const updateExpense = async (req: RequestType, res: Response): Promise<void> => 
             });
         }
 
+        // ✅ Send notification email to manager
+        const emailGetQuery = `
+            SELECT 
+                (SELECT Email FROM dbo.employeedetails AS iemp WHERE iemp.EMPCode = emp.MgrEmployeeID) AS managerEmail, 
+                (SELECT CONCAT(FirstName, ' ', LastName) FROM dbo.employeedetails AS iemp WHERE iemp.EMPCode = emp.MgrEmployeeID) AS managerName 
+            FROM dbo.employeedetails AS emp 
+            WHERE emp.EMPCode = :EMPCode
+        `;
+
+        const emailGetData: any = await sequelize.query(emailGetQuery, {
+            replacements: { EMPCode: decoded.EMPCode },
+            type: QueryTypes.SELECT,
+        });
+
+        // ✅ Get updated expense details
+        const getExpenseQuery = `
+            SELECT 
+                emp.EMPCode AS EmpId, 
+                CONCAT(emp.FirstName, ' ', emp.LastName) AS Name, 
+                mem.ExpModeDesc AS ExpenseType, 
+                ve.amount AS Cost, 
+                FORMAT(ve.updatedAt AT TIME ZONE 'UTC' AT TIME ZONE 'India Standard Time', 'dd-MM-yyyy') AS Date, 
+                vs.VisitFrom, 
+                vs.VisitTo, 
+                vs.VisitPurpose AS Purpose 
+            FROM dbo.visitexpense ve 
+            INNER JOIN dbo.employeedetails emp ON emp.EMPCode = ve.EmpCode 
+            INNER JOIN dbo.visitsummary vs ON vs.VisitSummaryId = ve.VisitSummaryId 
+            INNER JOIN dbo.mstexpmode mem ON mem.ExpModeId = ve.expensemodeid 
+            WHERE ve.ExpenseReqId = :ExpenseReqId
+        `;
+
+        const getExpenseDetail = await sequelize.query(getExpenseQuery, {
+            replacements: { ExpenseReqId: ExpenseReqId },
+            type: QueryTypes.SELECT,
+        });
+
+        // ✅ Prepare Excel attachment
+        let newAttachment: any = getExpenseDetail[0];
+        newAttachment.push({ EmpId: "", Name: "", ExpenseType: "", Cost: "", Date: "", VisitFrom: "", VisitTo: "", Purpose: "" });
+        newAttachment.push({ EmpId: "", Name: "", ExpenseType: "", Cost: "", Date: "", VisitFrom: "", VisitTo: "", Purpose: "" });
+        newAttachment.push({ EmpId: "", Name: "", ExpenseType: "", Cost: "", Date: "", VisitFrom: "", VisitTo: "", Purpose: "" });
+        newAttachment.push({ EmpId: "Total Amount", Name: "", ExpenseType: "", Cost: "", Date: "", VisitFrom: "", VisitTo: "", Purpose: Amount });
+
+        const attachment = await convertToExcel(newAttachment);
+
+        // ✅ Send email notification
+        if (emailGetData[0]?.managerEmail) {
+            sentCreatedExpenseMail(
+                attachment, 
+                getExpenseDetail[0], 
+                emailGetData[0]?.managerEmail, 
+                Amount, 
+                emailGetData[0]?.managerName
+            );
+        }
+
         res.status(200).json({ 
             error: false,
             message: "Expense updated successfully" 
@@ -1005,6 +1039,7 @@ const updateExpense = async (req: RequestType, res: Response): Promise<void> => 
 };
 
 
+
 // Export Methods
 export {
     createExpense,
@@ -1016,6 +1051,5 @@ export {
     updateConvModeRate,
     expMstModeAdd,
     expMstModeUpdateByDesc,
-    getExpenseAmount,
-     updateExpense
+    getExpenseAmount
 };

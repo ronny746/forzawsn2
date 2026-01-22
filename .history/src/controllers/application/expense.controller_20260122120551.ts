@@ -926,11 +926,6 @@ const updateExpense = async (req: RequestType, res: Response): Promise<void> => 
             if (!item.image) return;
 
             const id = uuidv4();
-            
-            // Truncate image name to 255 characters (or your column limit)
-            const truncatedImageName = item.image.length > 255 
-                ? item.image.substring(0, 255) 
-                : item.image;
 
             const insertQuery = `
                 INSERT INTO dbo.expensedocs 
@@ -942,7 +937,7 @@ const updateExpense = async (req: RequestType, res: Response): Promise<void> => 
                 ExpenseDocId: id,
                 ExpenseReqId: ExpenseReqId,
                 Amount: item.amount || 0,
-                imageName: truncatedImageName,
+                imageName: item.image,
                 isVerified: "InProgress",
                 isActive: 1,
                 deviceType: 'web'
@@ -1004,6 +999,10 @@ const updateExpense = async (req: RequestType, res: Response): Promise<void> => 
     }
 };
 
+// Export the function
+export {
+    updateExpense
+};
 
 // Export Methods
 export {
@@ -1016,6 +1015,5 @@ export {
     updateConvModeRate,
     expMstModeAdd,
     expMstModeUpdateByDesc,
-    getExpenseAmount,
-     updateExpense
+    getExpenseAmount
 };

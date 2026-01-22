@@ -1004,6 +1004,10 @@ const updateExpense = async (req: RequestType, res: Response): Promise<void> => 
     }
 };
 
+// Export the function
+export {
+    updateExpense
+};
 
 // Export Methods
 export {
@@ -1016,6 +1020,5 @@ export {
     updateConvModeRate,
     expMstModeAdd,
     expMstModeUpdateByDesc,
-    getExpenseAmount,
-     updateExpense
+    getExpenseAmount
 };
